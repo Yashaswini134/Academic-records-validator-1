@@ -1,0 +1,2 @@
+# This file ensures the model folder is tracked in git
+# The trained model (certificate_forgery_model.h5) will be saved here
