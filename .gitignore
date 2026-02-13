@@ -57,3 +57,20 @@ custom_output/
 *.pkl
 *.joblib
 models/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+
+# Node
+node_modules/
+
+# Uploads & output (generated files)
+backend/uploads/
+backend/output/
+
+# OS
+.DS_Store

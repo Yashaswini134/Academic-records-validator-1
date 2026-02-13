@@ -19,7 +19,8 @@ from ocr.ocr_engine import CertificateOCREngine
 from security.hash_generator import HashGenerator
 
 # Import Decision Engine (AI-integrated version)
-from backend.decision_engine_with_ai import EnhancedDecisionEngine
+from backend.decision_engine import DecisionEngine
+
 
 
 class CertificateVerificationController:
@@ -47,7 +48,7 @@ class CertificateVerificationController:
         self.ocr_engine = CertificateOCREngine(tesseract_path=tesseract_path)
         
         # Initialize Decision Engine (with AI integration)
-        self.decision_engine = EnhancedDecisionEngine(use_ai=True)
+        self.decision_engine = DecisionEngine()
         
         if self.verbose:
             print("=" * 70)
