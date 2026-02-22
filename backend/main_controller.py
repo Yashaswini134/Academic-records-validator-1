@@ -183,8 +183,7 @@ class CertificateVerificationController:
                 'roll_number': None,
                 'course': None,
                 'university': None,
-                'year': None,
-                'cgpa': None
+                'year': None
             }
     
     def _generate_hash(self, certificate_path: str) -> Dict:
@@ -262,7 +261,6 @@ class CertificateVerificationController:
             'course': ocr_result.get('course'),
             'university': ocr_result.get('university'),
             'year': ocr_result.get('year'),
-            'cgpa': ocr_result.get('cgpa'),
             
             # Hash information
             'hash': hash_result.get('hash'),
@@ -318,7 +316,6 @@ class CertificateVerificationController:
             'course': None,
             'university': None,
             'year': None,
-            'cgpa': None,
             'hash': None,
             'hash_algorithm': None,
             'ocr_status': 'FAIL',
@@ -377,7 +374,6 @@ class CertificateVerificationController:
         print(f"   Course:         {result.get('course', 'N/A')}")
         print(f"   University:     {result.get('university', 'N/A')}")
         print(f"   Year:           {result.get('year', 'N/A')}")
-        print(f"   CGPA:           {result.get('cgpa', 'N/A')}")
         
         print(f"\n🔐 Security:")
         hash_val = result.get('hash', 'N/A')

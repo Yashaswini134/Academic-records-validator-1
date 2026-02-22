@@ -1,259 +1,231 @@
-"""
-AI-based Certificate Forgery Detection - Prediction Module
-This module loads the trained CNN model and predicts forgery on certificate images.
-
-FIXED VERSION - Improved path handling and image loading
-"""
 
 import os
+import sys
 import json
 import numpy as np
-import tensorflow as tf
-from tensorflow import keras
-import cv2
-import sys
+from PIL import Image
+import traceback
 
-# Configuration
-IMG_SIZE = 224
-# Get the directory where this script is located
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(SCRIPT_DIR, 'model', 'certificate_forgery_model.h5')
+# Disable GPU to prevent hangs in some environments
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-def load_model():
-    """
-    Load the trained CNN model.
-    """
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(
-            f"Model not found at {MODEL_PATH}. "
-            "Please train the model first by running train_model.py"
-        )
-    
-    model = keras.models.load_model(MODEL_PATH)
-    return model
+# ==========================================
+# CONFIGURATION
+# ==========================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Data directory: Using 5 genuine samples as requested
+GENUINE_DIR = os.path.join(BASE_DIR, 'genuine_samples')
+SIMILARITY_THRESHOLD = 0.70  # Lowered from 0.85 for better stability
 
-def resolve_image_path(image_path):
-    """
-    Resolve image path to absolute path, handling both relative and absolute paths.
-    
-    Args:
-        image_path: Input path (can be relative or absolute)
-    
-    Returns:
-        Absolute path to the image
-    """
-    # If already absolute and exists, return it
-    if os.path.isabs(image_path) and os.path.exists(image_path):
-        return image_path
-    
-    # Try relative to current working directory
-    cwd_path = os.path.abspath(image_path)
-    if os.path.exists(cwd_path):
-        return cwd_path
-    
-    # Try relative to script directory
-    script_relative_path = os.path.join(SCRIPT_DIR, image_path)
-    if os.path.exists(script_relative_path):
-        return script_relative_path
-    
-    # Return the original path (will fail validation later with clear error)
-    return image_path
+# ==========================================
+# GOBAL STATE
+# ==========================================
+ENGINE = None
+model = None
+extract_features_impl = None
+calculate_similarity_impl = None
+genuine_embeddings = []
+INIT_ERROR = None
+_last_extract_error = None
 
-def preprocess_image(image_path):
-    """
-    Preprocess the certificate image for prediction.
-    Args:
-        image_path: Path to the certificate image
-    Returns:
-        Preprocessed image array
-    """
-    # Resolve the path
-    resolved_path = resolve_image_path(image_path)
-    
-    # Check if file exists
-    if not os.path.exists(resolved_path):
-        # Provide helpful error message
-        raise FileNotFoundError(
-            f"Image not found: {image_path}\n"
-            f"Resolved path: {resolved_path}\n"
-            f"Current working directory: {os.getcwd()}\n"
-            f"Script directory: {SCRIPT_DIR}\n"
-            f"Please check:\n"
-            f"  1. File exists at the specified path\n"
-            f"  2. File extension is correct (.jpg, .jpeg, .png, etc.)\n"
-            f"  3. Path is correct (use forward slashes or double backslashes on Windows)"
-        )
-    
-    # Read image
-    img = cv2.imread(resolved_path)
-    if img is None:
-        raise ValueError(
-            f"Failed to load image: {resolved_path}\n"
-            f"The file exists but cannot be opened as an image.\n"
-            f"Please check:\n"
-            f"  1. File is a valid image format (PNG, JPG, JPEG, BMP, TIFF)\n"
-            f"  2. File is not corrupted\n"
-            f"  3. File has proper read permissions"
-        )
-    
-    # Resize to model input size
-    img = cv2.resize(img, (IMG_SIZE, IMG_SIZE))
-    
-    # Convert BGR to RGB
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    
-    # Normalize pixel values to [0, 1]
-    img = img.astype(np.float32) / 255.0
-    
-    # Add batch dimension
-    img = np.expand_dims(img, axis=0)
-    
-    return img
+# ==========================================
+# MODEL SETUP (Dual Support: Torch or TF)
+# ==========================================
 
-def predict_forgery(image_path, output_json=True):
-    """
-    Predict whether a certificate is genuine or suspicious.
+# Attempt 1: PyTorch (Preferred)
+try:
+    import torch
+    import torch.nn as nn
+    import torchvision.models as models
+    import torchvision.transforms as transforms
     
-    Args:
-        image_path: Path to the certificate image
-        output_json: If True, return JSON string; if False, return dict
-    
-    Returns:
-        JSON string or dict with ai_score and ai_result
-    """
-    # Load model
-    model = load_model()
-    
-    # Preprocess image
-    img = preprocess_image(image_path)
-    
-    # Make prediction
-    prediction = model.predict(img, verbose=0)[0][0]
-    
-    # Convert prediction to score (0.0 = genuine, 1.0 = fake)
-    ai_score = float(prediction)
-    
-    # Determine result based on threshold (0.5)
-    if ai_score >= 0.5:
-        ai_result = "Suspicious"
-    else:
-        ai_result = "Genuine"
-    
-    # Create result dictionary
-    result = {
-        "ai_score": round(ai_score, 3),
-        "ai_result": ai_result
-    }
-    
-    if output_json:
-        return json.dumps(result, indent=2)
-    else:
-        return result
-
-def run_tests():
-    """
-    Run built-in tests with sample images from dataset folders.
-    """
-    print("\n" + "=" * 60)
-    print("Running Built-in Tests")
-    print("=" * 60)
-    
-    # Find test images
-    genuine_folder = os.path.join(SCRIPT_DIR, 'dataset', 'genuine')
-    fake_folder = os.path.join(SCRIPT_DIR, 'dataset', 'fake')
-    
-    test_cases = []
-    
-    # Find one genuine image
-    if os.path.exists(genuine_folder):
-        genuine_files = [f for f in os.listdir(genuine_folder) 
-                        if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff'))
-                        and not f.startswith('.')]
-        if genuine_files:
-            test_cases.append(('GENUINE', os.path.join(genuine_folder, genuine_files[0])))
-    
-    # Find one fake image
-    if os.path.exists(fake_folder):
-        fake_files = [f for f in os.listdir(fake_folder) 
-                     if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff'))
-                     and not f.startswith('.')]
-        if fake_files:
-            test_cases.append(('FAKE', os.path.join(fake_folder, fake_files[0])))
-    
-    if not test_cases:
-        print("\n❌ No test images found in dataset folders!")
-        print(f"   Genuine folder: {genuine_folder}")
-        print(f"   Fake folder: {fake_folder}")
-        return
-    
-    # Run tests
-    for label, image_path in test_cases:
-        print(f"\n[Testing {label} certificate]")
-        print(f"File: {os.path.basename(image_path)}")
-        try:
-            result = predict_forgery(image_path, output_json=False)
-            print(f"Result: {result['ai_result']} (score: {result['ai_score']})")
-            
-            # Check if prediction matches expected label
-            if label == 'GENUINE' and result['ai_result'] == 'Genuine':
-                print("✅ CORRECT prediction!")
-            elif label == 'FAKE' and result['ai_result'] == 'Suspicious':
-                print("✅ CORRECT prediction!")
-            else:
-                print("⚠️  INCORRECT prediction - model may need retraining")
-        except Exception as e:
-            print(f"❌ Error: {e}")
-    
-    print("\n" + "=" * 60)
-
-def main():
-    """
-    Main function for command-line usage.
-    """
-    # Check if running in test mode
-    if len(sys.argv) == 1:
-        print("\n" + "=" * 60)
-        print("AI Certificate Forgery Detection - Prediction Tool")
-        print("=" * 60)
-        print("\nUsage:")
-        print("  python predict_forgery.py <certificate_image_path>")
-        print("  python predict_forgery.py --test")
-        print("\nExamples:")
-        print("  python predict_forgery.py test.png")
-        print("  python predict_forgery.py dataset/genuine/cert1.jpg")
-        print("  python predict_forgery.py ../input/certificate.jpg")
-        print("  python predict_forgery.py --test")
-        print("\n" + "=" * 60)
-        sys.exit(0)
-    
-    # Check for test flag
-    if sys.argv[1] == '--test' or sys.argv[1] == '-t':
-        run_tests()
-        sys.exit(0)
-    
-    image_path = sys.argv[1]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     try:
-        # Make prediction
-        result_json = predict_forgery(image_path, output_json=True)
+        from torchvision.models import MobileNetV2_Weights
+        torch_model = models.mobilenet_v2(weights=MobileNetV2_Weights.IMAGENET1K_V1).to(device)
+    except (ImportError, AttributeError):
+        torch_model = models.mobilenet_v2(pretrained=True).to(device)
         
-        # Print result
-        print("\n" + "=" * 60)
-        print("AI-based Certificate Forgery Detection - Prediction Result")
-        print("=" * 60)
-        print(f"\nCertificate: {os.path.basename(image_path)}")
-        print("\nResult:")
-        print(result_json)
-        print("\n" + "=" * 60)
+    torch_model.classifier = nn.Identity()
+    torch_model.eval()
+    for param in torch_model.parameters():
+        param.requires_grad = False
         
+    preprocess_pipeline = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    
+    def torch_extract(path):
+        global _last_extract_error
+        try:
+            if path.lower().endswith('.pdf'):
+                _last_extract_error = "AI forgery detection does not support PDF files. Please upload a JPG or PNG image."
+                return None
+            img = Image.open(path).convert('RGB')
+            img_t = preprocess_pipeline(img).unsqueeze(0).to(device)
+            with torch.no_grad():
+                features = torch_model(img_t)
+            return features.flatten().cpu().numpy()
+        except Exception as e:
+            _last_extract_error = f"{type(e).__name__}: {str(e)}"
+            return None
+        
+    def torch_cosine(feat1, feat2):
+        f1 = torch.from_numpy(feat1).unsqueeze(0)
+        f2 = torch.from_numpy(feat2).unsqueeze(0)
+        return torch.nn.functional.cosine_similarity(f1, f2).item()
+
+    model = torch_model
+    extract_features_impl = torch_extract
+    calculate_similarity_impl = torch_cosine
+    ENGINE = "pytorch"
+    
+except Exception as torch_e:
+    # Fallback to TensorFlow if Torch fails
+    try:
+        import tensorflow as tf
+        # Use tf.keras which is more stable across versions
+        MobileNetV2 = tf.keras.applications.MobileNetV2
+        preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
+        
+        # Load model for feature extraction
+        tf_model = MobileNetV2(weights='imagenet', include_top=False, pooling='avg')
+        
+        def tf_extract(path):
+            global _last_extract_error
+            try:
+                # Basic check for PDF
+                if path.lower().endswith('.pdf'):
+                    _last_extract_error = "AI forgery detection does not support PDF files. Please upload a JPG or PNG image."
+                    return None
+
+                img = Image.open(path).convert('RGB').resize((224, 224))
+                img_array = np.array(img).astype(np.float32)
+                img_array = np.expand_dims(img_array, axis=0)
+                img_array = preprocess_input(img_array)
+                features = tf_model.predict(img_array, verbose=0)
+                return features.flatten()
+            except Exception as e:
+                _last_extract_error = f"{type(e).__name__}: {str(e)}"
+                print(f"TF extract error for {path}: {e}")
+                return None
+            
+        def tf_cosine(feat1, feat2):
+            dot = np.dot(feat1, feat2)
+            norm1 = np.linalg.norm(feat1)
+            norm2 = np.linalg.norm(feat2)
+            if norm1 == 0 or norm2 == 0: return 0.0
+            return float(dot / (norm1 * norm2))
+
+        model = tf_model
+        extract_features_impl = tf_extract
+        calculate_similarity_impl = tf_cosine
+        ENGINE = "tensorflow"
+        
+    except Exception as tf_e:
+        ENGINE = None
+        INIT_ERROR = f"AI engines unavailable. Torch error: {torch_e}. TF error: {tf_e}"
+
+# ==========================================
+# INITIALIZATION
+# ==========================================
+if ENGINE and not INIT_ERROR:
+    try:
+        if not os.path.exists(GENUINE_DIR):
+            INIT_ERROR = f"Genuine samples directory missing: {GENUINE_DIR}"
+        else:
+            valid_exts = ('.jpg', '.jpeg', '.png', '.bmp', '.webp')
+            img_files = [f for f in os.listdir(GENUINE_DIR) if f.lower().endswith(valid_exts)]
+            
+            if not img_files:
+                abs_genuine_dir = os.path.abspath(GENUINE_DIR)
+                INIT_ERROR = f"No images found in {abs_genuine_dir}"
+            else:
+                for img_name in img_files:
+                    try:
+                        path = os.path.join(GENUINE_DIR, img_name)
+                        emb = extract_features_impl(path)
+                        if emb is not None:
+                            genuine_embeddings.append(emb)
+                    except:
+                        continue
+                        
+                if not genuine_embeddings:
+                    INIT_ERROR = f"Could not initialize AI with samples in {GENUINE_DIR}"
     except Exception as e:
-        error_result = {
-            "ai_score": 0.0,
-            "ai_result": "Error",
-            "error_message": str(e)
+        INIT_ERROR = f"AI Initialisation failed: {str(e)}"
+
+# ==========================================
+# PREDICTION API
+# ==========================================
+
+def predict_forgery(image_path):
+    """
+    Checks if a certificate is Genuine by comparing it with known templates.
+    """
+    global _last_extract_error
+    _last_extract_error = None
+    
+    if INIT_ERROR:
+        return {
+            "ai_enabled": False,
+            "ai_result": "UNKNOWN",
+            "error": INIT_ERROR
         }
-        print(json.dumps(error_result, indent=2))
-        sys.exit(1)
+    if not os.path.exists(image_path):
+        return {
+            "ai_enabled": False,
+            "ai_result": "UNKNOWN",
+            "error": f"Image path not found: {image_path}"
+        }
+        
+    try:
+        # 1. Extract features of query image
+        new_feat = extract_features_impl(image_path)
+        if new_feat is None:
+            return {
+                "ai_enabled": False,
+                "ai_result": "UNKNOWN",
+                "error": f"Feature extraction failed: {_last_extract_error or 'Unknown error'}"
+            }
+            
+        # 2. Compare against all genuine embeddings
+        max_similarity = 0.0
+        all_similarities = []
+        for gen_emb in genuine_embeddings:
+            sim = calculate_similarity_impl(new_feat, gen_emb)
+            all_similarities.append(float(sim))
+            if sim > max_similarity:
+                max_similarity = sim
+                
+        # 3. Apply decision rule
+        is_genuine = (max_similarity >= SIMILARITY_THRESHOLD)
+        prediction = "Genuine" if is_genuine else "Fake"
+        
+        # Compatibility keys for existing system
+        ai_result = "Genuine" if is_genuine else "Suspicious"
+        
+        return {
+            "ai_enabled": True,
+            "prediction": prediction,
+            "confidence": round(max_similarity, 2),
+            "ai_score": round(max_similarity, 4),
+            "all_scores": [round(s, 4) for s in all_similarities],
+            "ai_result": ai_result,
+            "engine_used": ENGINE
+        }
+    except Exception as e:
+        return {
+            "ai_enabled": False,
+            "ai_result": "UNKNOWN",
+            "error": str(e)
+        }
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "No image path provided."}))
+    else:
+        print(json.dumps(predict_forgery(sys.argv[1]), indent=2))

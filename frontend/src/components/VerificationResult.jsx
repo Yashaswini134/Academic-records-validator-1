@@ -1,6 +1,6 @@
 import React from 'react';
 
-const VerificationResult = ({ verificationData, onNewVerification }) => {
+const VerificationResult = ({ verificationData, onNewVerification, onBack }) => {
     const getDecisionBadge = (decision) => {
         const badges = {
             'VERIFIED': { class: 'status-verified', icon: '✅', text: 'VERIFIED' },
@@ -11,14 +11,32 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
         return badges[decision] || badges['SUSPICIOUS'];
     };
 
-    const badge = getDecisionBadge(verificationData.final_decision);
-    const hashMatch = verificationData.hash_status === 'SUCCESS';
-    const aiAnalysis = verificationData.ai_analysis || {};
+    // Normalize decision and analysis fields from backend
+    const finalDecision =
+        verificationData.final_decision ||
+        verificationData.final_status ||
+        'SUSPICIOUS';
+
+    const badge = getDecisionBadge(finalDecision);
+
+    const hashMatch =
+        typeof verificationData.hash_match === 'boolean'
+            ? verificationData.hash_match
+            : verificationData.hash_status === 'SUCCESS';
+
+    const aiAnalysis = verificationData.ai_analysis || {
+        ai_enabled: typeof verificationData.ai_score === 'number',
+        ai_score: verificationData.ai_score ?? 0,
+        ai_result: verificationData.ai_result || 'UNKNOWN',
+    };
 
     return (
         <div className="container">
             <div className="result-container">
                 <div className="result-header">
+                    <button onClick={onBack} className="btn-secondary" style={{ float: 'left' }}>
+                        ← Back
+                    </button>
                     <div className={`result-icon ${badge.class}`}>
                         {badge.icon}
                     </div>
@@ -35,37 +53,49 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                         <div className="detail-item">
                             <span className="detail-label">Certificate ID:</span>
                             <span className="detail-value">
-                                {verificationData.certificate_id || 'N/A'}
+                                {verificationData.certificate_id ||
+                                    verificationData.ocr_data?.certificate_id ||
+                                    'N/A'}
                             </span>
                         </div>
                         <div className="detail-item">
                             <span className="detail-label">Student Name:</span>
                             <span className="detail-value">
-                                {verificationData.student_name || 'N/A'}
+                                {verificationData.student_name ||
+                                    verificationData.ocr_data?.student_name ||
+                                    'N/A'}
                             </span>
                         </div>
                         <div className="detail-item">
                             <span className="detail-label">Roll Number:</span>
                             <span className="detail-value">
-                                {verificationData.roll_number || 'N/A'}
+                                {verificationData.roll_number ||
+                                    verificationData.ocr_data?.roll_number ||
+                                    'N/A'}
                             </span>
                         </div>
                         <div className="detail-item">
                             <span className="detail-label">Course:</span>
                             <span className="detail-value">
-                                {verificationData.course || 'N/A'}
+                                {verificationData.course ||
+                                    verificationData.ocr_data?.course ||
+                                    'N/A'}
                             </span>
                         </div>
                         <div className="detail-item">
                             <span className="detail-label">University:</span>
                             <span className="detail-value">
-                                {verificationData.university || 'N/A'}
+                                {verificationData.university ||
+                                    verificationData.ocr_data?.university ||
+                                    'N/A'}
                             </span>
                         </div>
                         <div className="detail-item">
                             <span className="detail-label">Year:</span>
                             <span className="detail-value">
-                                {verificationData.year || 'N/A'}
+                                {verificationData.year ||
+                                    verificationData.ocr_data?.year ||
+                                    'N/A'}
                             </span>
                         </div>
                         <div className="detail-item">
@@ -84,13 +114,18 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                         <div className="hash-item">
                             <span className="hash-label">📜 Original Hash (from Blockchain):</span>
                             <code className="hash-code">
-                                {verificationData.blockchain_hash || verificationData.hash || 'Not available'}
+                                {verificationData.blockchain_hash ||
+                                    verificationData.hash ||
+                                    'Not available'}
                             </code>
                         </div>
                         <div className="hash-item">
                             <span className="hash-label">📄 Current Hash (from uploaded file):</span>
                             <code className="hash-code">
-                                {verificationData.current_hash || verificationData.hash || 'Not available'}
+                                {verificationData.current_hash ||
+                                    verificationData.generated_hash ||
+                                    verificationData.hash ||
+                                    'Not available'}
                             </code>
                         </div>
                         <div className="hash-match-indicator">
@@ -107,7 +142,8 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                         <div className="hash-status">
                             <span className="detail-label">Hash Verification:</span>
                             <span className={`status-badge ${hashMatch ? 'status-success' : 'status-error'}`}>
-                                {verificationData.hash_status || 'UNKNOWN'}
+                                {verificationData.hash_status ||
+                                    (hashMatch ? 'SUCCESS' : 'MISMATCH')}
                             </span>
                         </div>
                         {verificationData.blockchain_info && (
@@ -117,13 +153,20 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                                     <div className="detail-item">
                                         <span className="detail-label">Block Number:</span>
                                         <span className="detail-value">
-                                            {verificationData.blockchain_info.blockNumber || 'N/A'}
+                                            {verificationData.blockchain_info.blockNumber ||
+                                                verificationData.blockchain_info.block_number ||
+                                                'N/A'}
                                         </span>
                                     </div>
                                     <div className="detail-item">
                                         <span className="detail-label">Transaction Hash:</span>
-                                        <span className="detail-value" style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
-                                            {verificationData.blockchain_info.transactionHash || 'N/A'}
+                                        <span
+                                            className="detail-value"
+                                            style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}
+                                        >
+                                            {verificationData.blockchain_info.transactionHash ||
+                                                verificationData.blockchain_info.tx_hash ||
+                                                'N/A'}
                                         </span>
                                     </div>
                                     <div className="detail-item">
@@ -152,8 +195,10 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                     {aiAnalysis.ai_enabled ? (
                         <div className="ai-analysis">
                             <div className="ai-score-display">
-                                <div className="ai-score-label">AI Suspicion Score</div>
-                                <div className="ai-score-value">
+                                <div className="ai-score-label">AI Authentication Score</div>
+                                <div className="ai-score-value" style={{
+                                    color: aiAnalysis.ai_result === 'Genuine' ? '#28a745' : '#dc3545'
+                                }}>
                                     {(aiAnalysis.ai_score * 100).toFixed(1)}%
                                 </div>
                                 <div className="ai-score-bar">
@@ -162,11 +207,9 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                                         style={{
                                             width: `${aiAnalysis.ai_score * 100}%`,
                                             backgroundColor:
-                                                aiAnalysis.ai_score < 0.3
-                                                    ? '#4caf50'
-                                                    : aiAnalysis.ai_score < 0.7
-                                                        ? '#ff9800'
-                                                        : '#f44336',
+                                                aiAnalysis.ai_result === 'Genuine'
+                                                    ? '#28a745' // Success Green
+                                                    : '#dc3545', // Danger Red
                                         }}
                                     ></div>
                                 </div>
@@ -176,7 +219,7 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                                 <span
                                     className={`status-badge ${aiAnalysis.ai_result === 'Genuine'
                                         ? 'status-success'
-                                        : 'status-warning'
+                                        : 'status-fake'
                                         }`}
                                 >
                                     {aiAnalysis.ai_result}
@@ -205,14 +248,7 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                             <div className="decision-icon">{badge.icon}</div>
                             <div className="decision-text">
                                 <h4>{badge.text}</h4>
-                                <p className="decision-confidence">
-                                    Confidence: {verificationData.decision_confidence || 'N/A'}
-                                </p>
                             </div>
-                        </div>
-                        <div className="decision-remarks">
-                            <h4>Explanation:</h4>
-                            <p>{verificationData.remarks || 'No additional remarks'}</p>
                         </div>
                         {verificationData.flags && verificationData.flags.length > 0 && (
                             <div className="decision-flags">
@@ -229,37 +265,6 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                     </div>
                 </div>
 
-                {/* Processing Info */}
-                <div className="result-section">
-                    <h3>📊 Processing Information</h3>
-                    <div className="processing-info">
-                        <div className="info-item">
-                            <span className="info-label">OCR Status:</span>
-                            <span className={`status-badge ${verificationData.ocr_status === 'PASS' ? 'status-success' : 'status-warning'
-                                }`}>
-                                {verificationData.ocr_status || 'N/A'}
-                            </span>
-                        </div>
-                        <div className="info-item">
-                            <span className="info-label">Processing Time:</span>
-                            <span className="info-value">
-                                {verificationData.processing_time || 'N/A'}
-                            </span>
-                        </div>
-                        <div className="info-item">
-                            <span className="info-label">Timestamp:</span>
-                            <span className="info-value">
-                                {verificationData.timestamp || new Date().toLocaleString()}
-                            </span>
-                        </div>
-                        <div className="info-item">
-                            <span className="info-label">Verification Version:</span>
-                            <span className="info-value">
-                                {verificationData.verification_version || '2.0'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
 
                 <div className="result-actions">
                     <button
@@ -270,23 +275,6 @@ const VerificationResult = ({ verificationData, onNewVerification }) => {
                     </button>
                 </div>
 
-                <div className="info-box">
-                    <h4>ℹ️ Understanding the Results</h4>
-                    <ul>
-                        <li>
-                            <strong>VERIFIED:</strong> Certificate is authentic. All checks passed.
-                        </li>
-                        <li>
-                            <strong>SUSPICIOUS:</strong> Certificate has issues. OCR or data validation failed.
-                        </li>
-                        <li>
-                            <strong>FAKE:</strong> Certificate is tampered. Hash verification failed.
-                        </li>
-                        <li>
-                            <strong>MANUAL REVIEW:</strong> AI detected suspicious patterns. Human review needed.
-                        </li>
-                    </ul>
-                </div>
             </div>
         </div>
     );

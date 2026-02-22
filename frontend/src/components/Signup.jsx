@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 
 const Signup = ({ role, onSignupSuccess, onSwitchToSignin, onBack }) => {
     const [formData, setFormData] = useState({
         email: '',
+        universityName: '',
         password: '',
         confirmPassword: '',
     });
@@ -10,7 +12,7 @@ const Signup = ({ role, onSignupSuccess, onSwitchToSignin, onBack }) => {
     const [loading, setLoading] = useState(false);
 
     const validateEmail = (email) => {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@gmail\.com$/;
         return emailRegex.test(email);
     };
 
@@ -32,7 +34,7 @@ const Signup = ({ role, onSignupSuccess, onSwitchToSignin, onBack }) => {
         if (!formData.email) {
             newErrors.email = 'Email is required';
         } else if (!validateEmail(formData.email)) {
-            newErrors.email = 'Please enter a valid email address';
+            newErrors.email = 'Please enter a valid @gmail.com address';
         }
 
         if (!formData.password) {
@@ -61,38 +63,27 @@ const Signup = ({ role, onSignupSuccess, onSwitchToSignin, onBack }) => {
         setLoading(true);
 
         try {
-            // Mock signup - in production, this would call backend API
-            // Simulating API call delay
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            // Store user data in localStorage (mock authentication)
-            const userData = {
+            // Real signup - call backend API
+            const response = await axios.post(`http://localhost:5000/${role}/signup`, {
                 email: formData.email,
-                role: role,
-                createdAt: new Date().toISOString(),
-            };
-
-            // Save to localStorage
-            const users = JSON.parse(localStorage.getItem('users') || '[]');
-
-            // Check if user already exists
-            const existingUser = users.find(u => u.email === formData.email);
-            if (existingUser) {
-                setErrors({ email: 'User with this email already exists' });
-                setLoading(false);
-                return;
-            }
-
-            users.push({
-                ...userData,
-                password: formData.password, // In production, this would be hashed
+                university_name: formData.universityName,
+                password: formData.password,
+                role: role
             });
-            localStorage.setItem('users', JSON.stringify(users));
 
-            // Success - redirect to signin
-            onSignupSuccess(userData);
+            if (response.status === 200 || response.status === 201) {
+                // Store user data in localStorage (mock authentication)
+                const userData = {
+                    email: formData.email,
+                    role: role,
+                    createdAt: new Date().toISOString(),
+                };
+
+                // Success - redirect to signin
+                onSignupSuccess(userData);
+            }
         } catch (err) {
-            setErrors({ general: 'Signup failed. Please try again.' });
+            setErrors({ general: err.response?.data?.message || 'Signup failed. Please try again.' });
         } finally {
             setLoading(false);
         }
@@ -112,6 +103,22 @@ const Signup = ({ role, onSignupSuccess, onSwitchToSignin, onBack }) => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="auth-form">
+                    {role === 'university' && (
+                        <div className="form-group">
+                            <label htmlFor="universityName">
+                                University Name <span className="required">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                id="universityName"
+                                name="universityName"
+                                value={formData.universityName}
+                                onChange={handleChange}
+                                placeholder="Enter University Name (e.g. JNTUH)"
+                                disabled={loading}
+                            />
+                        </div>
+                    )}
                     <div className="form-group">
                         <label htmlFor="email">
                             Email Address <span className="required">*</span>

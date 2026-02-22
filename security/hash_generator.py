@@ -1,11 +1,12 @@
 """
 Hash Generator Module for Certificate Verification
-Generates SHA-256 hash of certificate files
+Generates SHA-256 hash of certificate data
 """
 
 import hashlib
 import os
-from typing import Optional
+import re
+from typing import Optional, Dict, Any, Union
 
 
 class HashGenerator:
@@ -146,59 +147,168 @@ class HashGenerator:
         return HashGenerator.generate_text_hash(data_str)
 
 
-def generate_certificate_hash(certificate_path: str) -> Optional[str]:
+def generate_certificate_hash(data: Dict[str, Any]) -> str:
     """
-    Convenience function to generate SHA-256 hash of certificate
+    Generate SHA-256 hash of certificate data using specific fields and normalization.
+    
+    Fields required:
+    - Certificate ID
+    - Student Name
+    - University Name
+    - Roll / Registration Number
+    - Year of Passing
+    - Course / Degree
+    
+    Process:
+    1. Extract fields
+    2. Normalize (trim, lowercase, single space, remove commas)
+    3. Concatenate using '|' delimiter
+    4. Generate SHA-256 hash
     
     Args:
-        certificate_path: Path to certificate file
+        data: Dictionary containing certificate data
         
     Returns:
-        SHA-256 hash or None
+        SHA-256 hash string
+        
+    Raises:
+        ValueError: If any required field is missing or empty
     """
-    return HashGenerator.generate_sha256(certificate_path)
-
+    
+    # Map of required fields to possible keys in input data
+    # Priority: Exact match -> Alternate keys
+    field_mappings = {
+        'certificate_id': ['certificate_id', 'cert_id', 'id'],
+        'student_name': ['student_name', 'name', 'student'],
+        'university': ['university_name', 'university', 'college'],
+        'roll_number': ['roll_number', 'roll', 'roll_no', 'registration_number', 'reg_no', 'registration', 'seat_no'],
+        'year': ['year', 'passing_year', 'year_of_passing'],
+        'course': ['course', 'degree', 'programme'],
+        'cgpa': ['cgpa', 'gpa', 'percentage', 'marks']
+    }
+    
+    # Order for concatenation: Certificate ID | Student Name | University Name | Roll / Registration Number | Year of Passing | Course / Degree | CGPA
+    # Note: CGPA is added at the end for backward compatibility support if needed
+    ordered_keys = ['certificate_id', 'student_name', 'university', 'roll_number', 'year', 'course', 'cgpa']
+    
+    normalized_values = []
+    
+    for key in ordered_keys:
+        possible_keys = field_mappings[key]
+        value = None
+        
+        # Find value across possible keys
+        for k in possible_keys:
+            if k in data:
+                # Check directly if key exists, then check value
+                val = data[k]
+                if val is not None and str(val).strip() != "":
+                    value = val
+                    break
+        
+        # Check if value is found and not empty
+        if value is None:
+            # OPTIONAL FIELDS HANDLE (CGPA is optional for now to avoid breaking existing flows)
+            if key == 'cgpa':
+                normalized_values.append("0.00") # Default for missing CGPA
+                continue
+            raise ValueError(f"Missing required field: {key.replace('_', ' ').title()}")
+            
+        # Normalize
+        # 1. Convert to string
+        val_str = str(value)
+        # 2. Trim leading/trailing spaces
+        val_str = val_str.strip()
+        # 3. Convert to lowercase
+        val_str = val_str.lower()
+        # 4. Remove unnecessary commas
+        val_str = val_str.replace(',', '')
+        # 5. Replace multiple spaces with single space
+        val_str = re.sub(r'\s+', ' ', val_str)
+        
+        normalized_values.append(val_str)
+        
+    # Concatenate with '|'
+    final_string = "|".join(normalized_values)
+    
+    # DEBUG: Print exact string being hashed
+    print(f"\n[HASH DEBUG] String to Hash: {final_string}")
+    
+    # Create hash
+    hash_obj = hashlib.sha256()
+    hash_obj.update(final_string.encode('utf-8'))
+    
+    hash_hex = hash_obj.hexdigest()
+    print(f"[HASH DEBUG] Final Hash: {hash_hex}\n")
+    
+    return hash_hex
 
 if __name__ == "__main__":
     # Test the hash generator
-    test_file = "test.png"
+    print("="*60)
+    print("TESTING HASH GENERATOR - REVISED LOGIC")
+    print("="*60)
+
+    # Test Case 1: All fields present (Example from prompt)
+    test_data = {
+        'certificate_id': 'CERT123',
+        'student_name': 'Yashaswini',
+        'university_name': 'JNTU Hyderabad',
+        'roll_number': '2406',
+        'year': '2025',
+        'course': 'BTech CSE'
+    }
     
-    if os.path.exists(test_file):
-        print("="*60)
-        print("TESTING HASH GENERATOR")
-        print("="*60)
+    try:
+        print("\nTest 1 (Valid Data)...")
+        hash_val = generate_certificate_hash(test_data)
+        print(f"Generated Hash: {hash_val}")
         
-        # Generate hash
-        hash_value = generate_certificate_hash(test_file)
+        # Verify manual reconstruction
+        # normalized: cert123|yashaswini|jntu hyderabad|2406|2025|btech cse
+        expected_str = "cert123|yashaswini|jntu hyderabad|2406|2025|btech cse"
+        expected_hash = hashlib.sha256(expected_str.encode('utf-8')).hexdigest()
         
-        if hash_value:
-            print("\n" + "="*60)
-            print("HASH GENERATION SUCCESSFUL")
-            print("="*60)
+        if hash_val == expected_hash:
+            print("✓ Hash matches expected output")
+        else:
+            print(f"✗ Hash mismatch! Expected: {expected_hash}, Got: {hash_val}")
             
-            # Test verification
-            print("\nTesting hash verification...")
-            HashGenerator.verify_hash(test_file, hash_value)
-            
-            # Test with wrong hash
-            print("\nTesting with incorrect hash...")
-            HashGenerator.verify_hash(test_file, "0" * 64)
-        
-        # Test text hashing
-        print("\n" + "="*60)
-        print("Testing text hashing...")
-        text_hash = HashGenerator.generate_text_hash("Hello, World!")
-        print(f"Text hash: {text_hash}")
-        
-        # Test data hashing
-        print("\nTesting data hashing...")
-        sample_data = {
-            "name": "John Doe",
-            "roll": "12345",
-            "year": "2023"
-        }
-        data_hash = HashGenerator.generate_data_hash(sample_data)
-        print(f"Data hash: {data_hash}")
-        
-    else:
-        print(f"Test file '{test_file}' not found.")
+    except Exception as e:
+        print(f"Test 1 Failed: {e}")
+
+    # Test Case 2: Comma handling
+    test_data_comma = {
+        'certificate_id': 'CERT,123',
+        'student_name': 'Yashaswini,',
+        'university_name': 'JNTU, Hyderabad',
+        'roll_number': '2406',
+        'year': '2025',
+        'course': 'BTech, CSE'
+    }
+    
+    try:
+        print("\nTest 2 (Comma Handling)...")
+        hash_val = generate_certificate_hash(test_data_comma)
+        print(f"Generated Hash: {hash_val}")
+        if hash_val == expected_hash:
+            print("✓ Commas removed correctly")
+        else:
+            print("✗ Commas removal failed")
+    except Exception as e:
+        print(f"Test 2 Failed: {e}")
+
+    # Test Case 3: Missing field
+    test_data_missing = {
+        'student_name': 'Yashaswini',
+        'university_name': 'JNTU Hyderabad'
+    }
+    
+    try:
+        print("\nTest 3 (Missing Field)...")
+        generate_certificate_hash(test_data_missing)
+        print("FAILED (Should have raised error)")
+    except ValueError as e:
+        print(f"PASSED (Caught expected error: {e})")
+
+    print("\n" + "="*60)

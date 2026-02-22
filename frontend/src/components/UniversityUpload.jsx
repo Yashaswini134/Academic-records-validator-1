@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { universityAPI } from '../services/api';
 
-const UniversityUpload = ({ onUploadSuccess }) => {
+const UniversityUpload = ({ onUploadSuccess, onBack }) => {
     const [selectedFile, setSelectedFile] = useState(null);
     const [preview, setPreview] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -76,7 +76,21 @@ const UniversityUpload = ({ onUploadSuccess }) => {
     return (
         <div className="container">
             <div className="upload-container">
-                <h2>📤 Upload Certificate</h2>
+                <div className="flex-row-between">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                        <button onClick={onBack} className="btn-secondary" style={{ padding: '0.4rem 0.8rem' }}>
+                            ← Back
+                        </button>
+                        <h2 style={{ margin: 0 }}>📤 Upload Certificate</h2>
+                    </div>
+                    <button
+                        onClick={() => onUploadSuccess('dashboard_shortcut')}
+                        className="btn-secondary"
+                        style={{ padding: '0.5rem 1rem' }}
+                    >
+                        📜 View Issued
+                    </button>
+                </div>
                 <p className="subtitle">Upload a certificate for OCR extraction and registration</p>
 
                 <form onSubmit={handleSubmit} className="upload-form">

@@ -56,10 +56,23 @@ const UniversityReview = ({ extractedData, onConfirmSuccess, onBack }) => {
                 </p>
 
                 <div className="ocr-status">
-                    <span className="status-badge status-success">
-                        ✓ OCR Extraction Complete
-                    </span>
-                    <p>Status: {extractedData.ocr_status || 'PASS'}</p>
+                    {extractedData.status === 'Already Issued' ? (
+                        <>
+                            <span className="status-badge status-warning" style={{ background: '#ffc107', color: '#000' }}>
+                                ⚠️ Already Issued
+                            </span>
+                            <p style={{ color: '#856404', fontWeight: 'bold', marginTop: '0.5rem' }}>
+                                {extractedData.message}
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <span className="status-badge status-success">
+                                ✓ OCR Extraction Complete
+                            </span>
+                            <p>Status: {extractedData.ocr_status || 'PASS'}</p>
+                        </>
+                    )}
                 </div>
 
                 <div className="review-form">
@@ -183,20 +196,14 @@ const UniversityReview = ({ extractedData, onConfirmSuccess, onBack }) => {
                             type="button"
                             className="btn-primary btn-large"
                             onClick={handleConfirm}
-                            disabled={loading}
+                            disabled={loading || extractedData.status === 'Already Issued'}
                         >
                             {loading ? 'Confirming...' : 'Confirm & Generate Hash'}
                         </button>
                     </div>
                 </div>
 
-                <div className="info-box">
-                    <h4>ℹ️ Next Steps</h4>
-                    <p>
-                        After confirmation, a SHA-256 hash will be generated for this certificate.
-                        This hash will be used for future verification and blockchain registration.
-                    </p>
-                </div>
+
             </div>
         </div>
     );

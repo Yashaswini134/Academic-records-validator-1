@@ -1,0 +1,14 @@
+{
+    "name": "certificate-registry-blockchain",
+    "version": "1.0.0",
+    "description": "Ethereum blockchain integration for Academic Records Validator",
+    "scripts": {
+        "compile": "hardhat compile",
+        "deploy": "hardhat run scripts/deploy.js --network localhost",
+        "node": "hardhat node"
+    },
+    "devDependencies": {
+        "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+        "hardhat": "^2.17.0"
+    }
+}

@@ -1,6 +1,6 @@
 import React from 'react';
 
-const UniversitySuccess = ({ confirmationData, onNewCertificate }) => {
+const UniversitySuccess = ({ confirmationData, onNewCertificate, onViewIssued, onBack }) => {
     const copyToClipboard = (text) => {
         navigator.clipboard.writeText(text);
         alert('Copied to clipboard!');
@@ -9,6 +9,9 @@ const UniversitySuccess = ({ confirmationData, onNewCertificate }) => {
     return (
         <div className="container">
             <div className="success-container">
+                <button onClick={onBack} className="btn-secondary" style={{ marginBottom: '1rem' }}>
+                    ← Back
+                </button>
                 <div className="success-header">
                     <div className="success-icon">✅</div>
                     <h2>Certificate Registered Successfully!</h2>
@@ -62,13 +65,44 @@ const UniversitySuccess = ({ confirmationData, onNewCertificate }) => {
                     <div className="detail-card">
                         <h3>⛓️ Blockchain Status</h3>
                         <div className="blockchain-status">
-                            <span className="status-badge status-pending">
-                                ⏳ Blockchain Registration Pending
-                            </span>
-                            <p className="status-message">
-                                The certificate will be registered on the blockchain shortly.
-                                This feature will be available in the next update.
-                            </p>
+                            {confirmationData.blockchain_status === 'Success' ? (
+                                <>
+                                    <span className="status-badge status-success">
+                                        ⛓️ Registered on Blockchain
+                                    </span>
+                                    <p className="status-message" style={{ wordBreak: 'break-all', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                        <strong>Transaction Hash:</strong><br />
+                                        {confirmationData.tx_hash}
+                                    </p>
+                                </>
+                            ) : confirmationData.blockchain_status === 'Already Registered' ? (
+                                <>
+                                    <span className="status-badge status-success" style={{ background: '#28a745' }}>
+                                        ✅ Already on Blockchain
+                                    </span>
+                                    <p className="status-message">
+                                        This certificate ID was already registered in a previous session.
+                                    </p>
+                                </>
+                            ) : confirmationData.blockchain_status?.includes('Fallback') ? (
+                                <>
+                                    <span className="status-badge status-warning" style={{ background: '#ffc107', color: '#000' }}>
+                                        ⚠️ Local Storage Only
+                                    </span>
+                                    <p className="status-message">
+                                        Blockchain unavailable. Hash stored safely in university local database.
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="status-badge status-pending">
+                                        ⏳ {confirmationData.blockchain_status || 'Blockchain Registration Pending'}
+                                    </span>
+                                    <p className="status-message">
+                                        {confirmationData.tx_hash ? `TX: ${confirmationData.tx_hash}` : 'The certificate registration is being processed.'}
+                                    </p>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -99,24 +133,24 @@ const UniversitySuccess = ({ confirmationData, onNewCertificate }) => {
                     </div>
                 </div>
 
-                <div className="success-actions">
+                <div className="success-actions" style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                     <button
-                        className="btn-primary btn-large"
+                        className="btn-primary"
                         onClick={onNewCertificate}
+                        style={{ padding: '1rem 2rem' }}
                     >
                         Register Another Certificate
                     </button>
+                    <button
+                        className="btn-secondary"
+                        onClick={onViewIssued}
+                        style={{ padding: '1rem 2rem' }}
+                    >
+                        View Issued Certificates
+                    </button>
                 </div>
 
-                <div className="info-box">
-                    <h4>ℹ️ Important Information</h4>
-                    <ul>
-                        <li>Save the certificate ID and hash for future reference</li>
-                        <li>The hash is unique to this certificate and cannot be changed</li>
-                        <li>Verifiers can use the certificate ID or upload the certificate to verify authenticity</li>
-                        <li>Blockchain registration will provide immutable proof of issuance</li>
-                    </ul>
-                </div>
+
             </div>
         </div>
     );

@@ -8,26 +8,40 @@ import UniversityReview from './components/UniversityReview';
 import UniversitySuccess from './components/UniversitySuccess';
 import VerifierUpload from './components/VerifierUpload';
 import VerificationResult from './components/VerificationResult';
+import IssuedCertificates from './components/IssuedCertificates';
 
 function App() {
     const [currentRole, setCurrentRole] = useState(null);
     const [authStep, setAuthStep] = useState(null); // 'signup' or 'signin'
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [userData, setUserData] = useState(null);
-    const [universityStep, setUniversityStep] = useState('upload');
+    const [universityStep, setUniversityStep] = useState('upload'); // 'upload', 'review', 'success', 'dashboard'
     const [extractedData, setExtractedData] = useState(null);
     const [confirmationData, setConfirmationData] = useState(null);
     const [verifierStep, setVerifierStep] = useState('upload');
     const [verificationData, setVerificationData] = useState(null);
 
     // Set document title
+    // Auto-login from localStorage
     useEffect(() => {
+        const savedUser = localStorage.getItem('currentUser');
+        if (savedUser) {
+            try {
+                const user = JSON.parse(savedUser);
+                setUserData(user);
+                setCurrentRole(user.role);
+                setIsLoggedIn(true);
+                setAuthStep(null);
+            } catch (err) {
+                localStorage.removeItem('currentUser');
+            }
+        }
         document.title = 'Academic Records Validator';
     }, []);
 
     const handleRoleSelection = (role) => {
         setCurrentRole(role);
-        setAuthStep('signup'); // Default to signup for new users
+        setAuthStep('signin'); // Default to signin as requested
     };
 
     const handleSignupSuccess = (data) => {
@@ -39,6 +53,8 @@ function App() {
         setUserData(data);
         setIsLoggedIn(true);
         setAuthStep(null);
+        // Persist session if not already in Signin.jsx
+        localStorage.setItem('currentUser', JSON.stringify(data));
     };
 
     const handleSwitchToSignin = () => {
@@ -68,6 +84,10 @@ function App() {
     };
 
     const handleUploadSuccess = (data) => {
+        if (data === 'dashboard_shortcut') {
+            setUniversityStep('dashboard');
+            return;
+        }
         setExtractedData(data);
         setUniversityStep('review');
     };
@@ -131,7 +151,7 @@ function App() {
         // Step 3: Dashboard (University or Verifier)
         if (currentRole === 'university') {
             if (universityStep === 'upload') {
-                return <UniversityUpload onUploadSuccess={handleUploadSuccess} />;
+                return <UniversityUpload onUploadSuccess={handleUploadSuccess} onBack={handleLogout} />;
             }
             if (universityStep === 'review') {
                 return (
@@ -147,20 +167,26 @@ function App() {
                     <UniversitySuccess
                         confirmationData={confirmationData}
                         onNewCertificate={handleNewCertificate}
+                        onViewIssued={() => setUniversityStep('dashboard')}
+                        onBack={handleBackToUpload}
                     />
                 );
+            }
+            if (universityStep === 'dashboard') {
+                return <IssuedCertificates onBack={() => setUniversityStep('upload')} />;
             }
         }
 
         if (currentRole === 'verifier') {
             if (verifierStep === 'upload') {
-                return <VerifierUpload onVerificationSuccess={handleVerificationSuccess} />;
+                return <VerifierUpload onVerificationSuccess={handleVerificationSuccess} onBack={handleLogout} />;
             }
             if (verifierStep === 'result') {
                 return (
                     <VerificationResult
                         verificationData={verificationData}
                         onNewVerification={handleNewVerification}
+                        onBack={handleNewVerification}
                     />
                 );
             }
@@ -171,7 +197,7 @@ function App() {
 
     return (
         <div className="App">
-            <Navbar role={currentRole} onLogout={isLoggedIn ? handleLogout : null} />
+            <Navbar role={currentRole} userData={userData} onLogout={null} />
             <main className="main-content">{renderContent()}</main>
             <footer className="footer">
                 <p>© 2026 Academic Records Validator | Powered by AI & Blockchain</p>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { universityAPI, verifierAPI } from '../services/api';
 
 const Signin = ({ role, onSigninSuccess, onSwitchToSignup, onBack }) => {
     const [formData, setFormData] = useState({
@@ -28,30 +29,28 @@ const Signin = ({ role, onSigninSuccess, onSwitchToSignup, onBack }) => {
         setLoading(true);
 
         try {
-            // Mock signin - in production, this would call backend API
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Real signin - call backend API
+            const apiCall = role === 'university' ? universityAPI.login : verifierAPI.login;
+            const result = await apiCall({
+                role: role,
+                email: formData.email,
+                password: formData.password
+            });
 
-            // Retrieve users from localStorage
-            const users = JSON.parse(localStorage.getItem('users') || '[]');
+            if (result.success) {
+                // Store user data in localStorage (for persistent state between refreshes)
+                const user = {
+                    email: formData.email,
+                    role: role,
+                    university_name: result.data.university_name || formData.email
+                };
+                localStorage.setItem('currentUser', JSON.stringify(user));
 
-            // Find user with matching email and password
-            const user = users.find(
-                u => u.email === formData.email &&
-                    u.password === formData.password &&
-                    u.role === role
-            );
-
-            if (!user) {
-                setErrors({ general: 'Invalid email or password' });
-                setLoading(false);
-                return;
+                // Success - redirect to dashboard
+                onSigninSuccess(user);
+            } else {
+                setErrors({ general: result.error || 'Invalid email or password' });
             }
-
-            // Store current session
-            localStorage.setItem('currentUser', JSON.stringify(user));
-
-            // Success - redirect to dashboard
-            onSigninSuccess(user);
         } catch (err) {
             setErrors({ general: 'Sign in failed. Please try again.' });
         } finally {

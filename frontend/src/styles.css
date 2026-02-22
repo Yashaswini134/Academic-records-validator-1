@@ -926,8 +926,40 @@ body {
   border: 2px solid #667eea;
 }
 
+/* Action Step */
+.action-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.step-result {
+  font-size: 0.9rem;
+  font-weight: bold;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  width: fit-content;
+}
+
+.step-result.pass {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #2e7d32;
+}
+
+.step-result.fail {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #c62828;
+}
+
+.flex-row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .blockchain-info h4 {
   color: #667eea;
-  margin-bottom: 1rem;
-  font-size: 1.1rem;
 }

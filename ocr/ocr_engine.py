@@ -13,29 +13,129 @@ from PIL import Image
 import cv2
 import numpy as np
 
-# Import custom modules
-from ocr.preprocess import ImagePreprocessor
-from ocr.extract_fields import FieldExtractor
-from security.hash_generator import HashGenerator
+# Optional: EasyOCR (better accuracy on complex certificates)
+try:
+    import easyocr
+    _EASYOCR_AVAILABLE = True
+except Exception as e:
+    print(f"⚠ EasyOCR not available or failed to import: {e}")
+    easyocr = None
+    _EASYOCR_AVAILABLE = False
+
+# --- Defensive Imports ---
+
+# 1. Image Preprocessor
+try:
+    from ocr.preprocess_enhanced import EnhancedImagePreprocessor as ImagePreprocessor
+except ImportError as e:
+    print(f"⚠ Warning: Could not import ImagePreprocessor: {e}")
+    ImagePreprocessor = None
+
+# 2. Field Extractor
+try:
+    from ocr.extract_fields_improved import ImprovedFieldExtractor as FieldExtractor
+except ImportError as e:
+    print(f"⚠ Warning: Could not import FieldExtractor: {e}")
+    FieldExtractor = None
+
+# 3. Hash Generator
+try:
+    from security.hash_generator import HashGenerator
+except ImportError as e:
+    print(f"⚠ Warning: Could not import HashGenerator: {e}")
+    HashGenerator = None
+
+# 4. Layout Engine
+try:
+    from ocr.layout_engine import LayoutOCREngine
+except ImportError as e:
+    print(f"⚠ Warning: Could not import LayoutOCREngine: {e}")
+    LayoutOCREngine = None
 
 
 class CertificateOCREngine:
     """Main OCR engine that orchestrates the complete pipeline"""
     
-    def __init__(self, tesseract_path: Optional[str] = None):
-        """
-        Initialize OCR Engine
+    def __init__(self, tesseract_path: Optional[str] = None, tessdata_prefix: Optional[str] = None):
+        """Initialize OCR Engine with safe fallback"""
         
-        Args:
-            tesseract_path: Optional path to Tesseract executable
-        """
-        self.preprocessor = ImagePreprocessor()
-        self.extractor = FieldExtractor()
-        self.hash_generator = HashGenerator()
+        # Initialize components securely
+        if ImagePreprocessor:
+            try:
+                self.preprocessor = ImagePreprocessor()
+            except Exception as e:
+                print(f"⚠ Preprocessor init failed: {e}")
+                self.preprocessor = None
+        else:
+            self.preprocessor = None
+
+        if FieldExtractor:
+            try:
+                self.extractor = FieldExtractor()
+            except Exception as e:
+                print(f"⚠ Extractor init failed: {e}")
+                self.extractor = None
+        else:
+            self.extractor = None
+
+        if HashGenerator:
+            try:
+                self.hash_generator = HashGenerator()
+            except Exception as e:
+                print(f"⚠ HashGenerator init failed: {e}")
+                self.hash_generator = None
+        else:
+            self.hash_generator = None
+
+        if LayoutOCREngine:
+            try:
+                self.layout_engine = LayoutOCREngine()
+            except Exception as e:
+                print(f"⚠ LayoutEngine init failed: {e}")
+                self.layout_engine = None
+        else:
+            self.layout_engine = None
         
-        # Set Tesseract path if provided
+        # Initialize EasyOCR reader if available
+        self.easyocr_reader = None
+        if _EASYOCR_AVAILABLE:
+            try:
+                # English-only reader, CPU mode for compatibility
+                self.easyocr_reader = easyocr.Reader(['en'], gpu=False)
+                print("✓ EasyOCR reader initialized (en, gpu=False)")
+            except Exception as e:
+                print(f"⚠ EasyOCR initialization failed, will fall back to Tesseract: {e}")
+                self.easyocr_reader = None
+
+        # Set Tesseract path if provided, otherwise try to auto-detect on Windows
         if tesseract_path:
             pytesseract.pytesseract.tesseract_cmd = tesseract_path
+            print(f"✓ Tesseract path set to: {tesseract_path}")
+        else:
+            if os.name == "nt":
+                # Common Windows installation paths
+                default_paths = [
+                    r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+                    r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+                ]
+                for p in default_paths:
+                    if os.path.exists(p):
+                        pytesseract.pytesseract.tesseract_cmd = p
+                        print(f"✓ Auto-detected Tesseract at: {p}")
+                        if not tessdata_prefix:
+                            parent_dir = os.path.dirname(p)
+                            # Explicitly check for tessdata folder and point to it
+                            tessdata_path = os.path.join(parent_dir, 'tessdata')
+                            if os.path.exists(tessdata_path):
+                                tessdata_prefix = tessdata_path
+                            else:
+                                tessdata_prefix = parent_dir
+                        break
+        
+        # Set TESSDATA_PREFIX environment variable if provided or auto-detected
+        if tessdata_prefix:
+            os.environ['TESSDATA_PREFIX'] = tessdata_prefix
+            print(f"✓ TESSDATA_PREFIX set to: {tessdata_prefix}")
         
         # Try to detect Tesseract
         self._check_tesseract()
@@ -48,6 +148,7 @@ class CertificateOCREngine:
         except Exception as e:
             print("="*60)
             print("WARNING: Tesseract OCR not found!")
+            print(f"Error: {e}")
             print("="*60)
             print("Please install Tesseract OCR:")
             print("  Windows: Download from https://github.com/UB-Mannheim/tesseract/wiki")
@@ -57,36 +158,71 @@ class CertificateOCREngine:
             print("  pytesseract.pytesseract.tesseract_cmd = r'C:\\Program Files\\Tesseract-OCR\\tesseract.exe'")
             print("="*60)
     
-    def perform_ocr(self, image: np.ndarray, config: str = '--psm 6') -> str:
+    def perform_ocr(self, image: np.ndarray, config: str = '--oem 3 --psm 6') -> str:
         """
-        Perform OCR on preprocessed image
-        
-        Args:
-            image: Preprocessed image (numpy array)
-            config: Tesseract configuration string
-                   --psm 6: Assume a single uniform block of text
-                   --psm 3: Fully automatic page segmentation (default)
-        
-        Returns:
-            Extracted text
+        Perform OCR on preprocessed image.
+        If EasyOCR is available, prefer it; otherwise use Tesseract with multiple configs.
         """
-        print("\n" + "="*60)
+        print("\n" + "="*70)
         print("PERFORMING OCR")
-        print("="*60)
-        
+        print("="*70)
+
         try:
-            # Convert numpy array to PIL Image
+            # -------------------------
+            # 1) EasyOCR path
+            # -------------------------
+            if self.easyocr_reader is not None:
+                print("Using EasyOCR reader...")
+                # EasyOCR expects RGB numpy array
+                if len(image.shape) == 2:
+                    rgb_image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+                else:
+                    rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+                results = self.easyocr_reader.readtext(
+                    rgb_image,
+                    detail=0,
+                    paragraph=True
+                )
+                text = "\n".join(results)
+                print(f"EasyOCR extracted {len(text.strip())} characters")
+                return text
+
+            # -------------------------
+            # 2) Tesseract path
+            # -------------------------
+            print("EasyOCR not available; falling back to Tesseract (multi-config).")
             pil_image = Image.fromarray(image)
-            
-            # Perform OCR
-            text = pytesseract.image_to_string(pil_image, config=config)
-            
-            print(f"✓ OCR completed")
-            print(f"  Extracted {len(text)} characters")
-            print(f"  Lines: {len(text.splitlines())}")
-            
-            return text
-            
+
+            configs = [
+                '--oem 3 --psm 6',   # single uniform block
+                '--oem 3 --psm 4',   # single column
+                '--oem 3 --psm 11',  # sparse text
+            ]
+
+            best_text = ""
+            best_score = -1
+
+            for cfg in configs:
+                print(f"Trying config: {cfg}")
+                text = pytesseract.image_to_string(pil_image, config=cfg)
+                stripped = text.strip()
+
+                if not stripped:
+                    score = 0
+                else:
+                    alpha_num = sum(c.isalnum() for c in stripped)
+                    score = alpha_num
+
+                print(f"  -> chars: {len(stripped)}, alnum: {score}")
+
+                if score > best_score:
+                    best_score = score
+                    best_text = text
+
+            print(f"✓ Selected Tesseract result with best score: {best_score}")
+            return best_text or ""
+
         except Exception as e:
             print(f"✗ OCR failed: {str(e)}")
             return ""
@@ -135,41 +271,105 @@ class CertificateOCREngine:
         try:
             # Step 1: Generate file hash
             print("\n[STEP 1/4] Generating file hash...")
-            file_hash = self.hash_generator.generate_sha256(image_path)
-            if file_hash:
-                result['hash'] = file_hash
+            if self.hash_generator:
+                file_hash = self.hash_generator.generate_sha256(image_path)
+                if file_hash:
+                    result['hash'] = file_hash
+                else:
+                    result['errors'].append("Failed to generate file hash")
             else:
-                result['errors'].append("Failed to generate file hash")
+                print("⚠ Hash Generator unavailable.")
+
+            # Step 2 & 3: Multi-pass Preprocessing & OCR ("Tournament Mode")
+            print("\n[STEP 2 & 3] Multi-pass Preprocessing & OCR (Tournament Mode)...")
             
-            # Step 2: Preprocess image
-            print("\n[STEP 2/4] Preprocessing image...")
-            preprocessed = self.preprocessor.preprocess(image_path, save_intermediate)
+            ocr_text = ""
+            best_score = 0
+            best_variant_name = "None"
             
-            if preprocessed is None:
-                result['errors'].append("Image preprocessing failed")
-                return result
-            
-            # Step 3: Perform OCR
-            print("\n[STEP 3/4] Performing OCR...")
-            ocr_text = self.perform_ocr(preprocessed)
-            
+            candidates = {}
+
+            if self.preprocessor:
+                try:
+                    # Get all preprocessing variations
+                    variations = self.preprocessor.get_preprocessing_variations(image_path)
+                    
+                    if not variations:
+                        print("⚠ No variations generated, trying raw fallback...")
+                        try:
+                            pil_img = Image.open(image_path).convert('L')
+                            variations['0_Raw_Fallback'] = np.array(pil_img)
+                        except Exception as e:
+                            print(f"✗ Raw fallback failed: {e}")
+
+                    # Iterate through all variations
+                    for name, processed_img in variations.items():
+                        print(f"--- Attempt: {name} ---")
+                        try:
+                            # Run OCR on this variation
+                            text = self.perform_ocr(processed_img)
+                            cleaned_len = len(text.strip())
+                            
+                            # Simple scoring: length of text
+                            score = cleaned_len
+                            print(f"  -> extracted {score} chars")
+                            
+                            candidates[name] = text
+                            
+                            if score > best_score:
+                                best_score = score
+                                ocr_text = text
+                                best_variant_name = name
+                                
+                        except Exception as e:
+                            print(f"  ✗ {name} failed: {e}")
+                            
+                except Exception as e:
+                    print(f"⚠ Variation processing error: {e}")
+            else:
+                 print("⚠ Preprocessor unavailable.")
+
+            print(f"\n✓ WINNER: {best_variant_name} with {best_score} chars")
+
+            # Final check
             if not ocr_text or len(ocr_text.strip()) < 10:
-                result['errors'].append("OCR extraction failed or insufficient text")
+                result['errors'].append("OCR extraction failed (insufficient text in all passes)")
                 return result
+            
+            # Step 3: Set Final Text
+            print("\n[STEP 3/4] Finalizing text...")
+            # ocr_text is already populated by the multi-pass loop above
             
             result['raw_text'] = ocr_text
             
-            # Save raw OCR text
             if output_dir:
                 os.makedirs(output_dir, exist_ok=True)
-                text_file = os.path.join(output_dir, "ocr_raw_text.txt")
-                with open(text_file, 'w', encoding='utf-8') as f:
+                # Always save debug text for inspection
+                debug_file = os.path.join(output_dir, "debug_ocr_text.txt")
+                with open(debug_file, 'w', encoding='utf-8') as f:
                     f.write(ocr_text)
-                print(f"✓ Raw OCR text saved to: {text_file}")
+                print(f"✓ Debug OCR text saved to: {debug_file}")
             
             # Step 4: Extract fields
-            print("\n[STEP 4/4] Extracting fields...")
-            extracted_fields = self.extractor.extract_all_fields(ocr_text)
+            print("\n[STEP 4/4] Extracting fields (Regex + Layout)...")
+            self.extractor.extract_all_fields(ocr_text)
+            
+            # --- LAYOUT AWARE EXTRACTION (RESTORING & REFINING) ---
+            try:
+                print("Performing layout analysis for robust extraction...")
+                layout_data = self.layout_engine.analyze_layout(preprocessed)
+                if hasattr(self.extractor, 'set_layout_data'):
+                    self.extractor.set_layout_data(layout_data)
+                    self.extractor.extract_from_layout()
+            except Exception as e:
+                print(f"⚠ Layout analysis skipped due to error: {e}")
+            # -----------------------------------------------------
+            
+            # Get final extracted data
+            extracted_fields = self.extractor.extracted_data
+            
+            # Update result with extracted fields
+            result.update(extracted_fields)
             
             # Update result with extracted fields
             result.update(extracted_fields)

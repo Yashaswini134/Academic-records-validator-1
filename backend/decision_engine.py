@@ -4,6 +4,23 @@ Contains rule-based logic to determine certificate verification status
 """
 
 from typing import Dict, List
+import os
+import sys
+
+# Add parent directory to path for AI module import
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import AI prediction function
+try:
+    from ai.predict_forgery import predict_forgery
+    AI_AVAILABLE = True
+except Exception as e:
+    AI_AVAILABLE = False
+    print(f"Warning: AI module load failed: {e}. Proceeding without AI analysis.")
+except ImportError: 
+    # Catch ImportError explicitly just in case Exception misses some specific import errors in older python
+    AI_AVAILABLE = False
+    print("Warning: AI module not found. Proceeding without AI analysis.")
 
 
 class DecisionEngine:
@@ -42,13 +59,14 @@ class DecisionEngine:
         """Initialize the decision engine"""
         self.rules_applied = []
     
-    def make_decision(self, ocr_result: Dict, hash_result: Dict) -> Dict:
+    def make_decision(self, ocr_result: Dict, hash_result: Dict, certificate_image_path: str = None) -> Dict:
         """
-        Make final verification decision based on OCR and hash results
+        Make final verification decision based on OCR, hash, and AI results
         
         Args:
             ocr_result: Results from OCR processing
             hash_result: Results from hash generation
+            certificate_image_path: Path to certificate image for AI analysis
             
         Returns:
             Dictionary containing:
@@ -56,9 +74,13 @@ class DecisionEngine:
             - confidence: HIGH, MEDIUM, or LOW
             - remarks: Explanation of decision
             - flags: List of issues found
+            - ai_analysis: AI prediction results (if available)
         """
         self.rules_applied = []
         flags = []
+        
+        # STEP 0: Run AI Analysis (if available and image path provided)
+        ai_analysis = self._run_ai_analysis(certificate_image_path)
         
         # RULE 1: Check OCR Status
         ocr_status = ocr_result.get('status', 'FAIL')
@@ -113,7 +135,19 @@ class DecisionEngine:
         
         # DECISION LOGIC
         
-        # Case 1: OCR PASS + Hash Success + No Critical Issues = VERIFIED
+        # AI OVERRIDE: If AI detects forgery with high confidence, mark as SUSPICIOUS
+        if ai_analysis.get('ai_enabled') and ai_analysis.get('ai_result') == 'Suspicious':
+            if ai_analysis.get('ai_score', 0) >= 0.7:  # High confidence suspicious
+                return self._create_decision_with_ai(
+                    decision=self.DECISION_SUSPICIOUS,
+                    confidence=self.CONFIDENCE_HIGH,
+                    remarks=f"AI detected potential forgery (confidence: {ai_analysis.get('ai_score', 0):.2f}). Manual review required.",
+                    flags=flags + ['AI_FORGERY_DETECTED'],
+                    rule_applied="RULE_AI: AI_FORGERY_DETECTION",
+                    ai_analysis=ai_analysis
+                )
+        
+        # Case 1: OCR PASS + Hash Success + No Critical Issues + AI Genuine = VERIFIED
         if (ocr_status == 'PASS' and 
             hash_result.get('success', False) and 
             not missing_critical and
@@ -121,21 +155,23 @@ class DecisionEngine:
             
             if missing_important:
                 # Some optional fields missing, but core data is good
-                return self._create_decision(
+                return self._create_decision_with_ai(
                     decision=self.DECISION_VERIFIED,
                     confidence=self.CONFIDENCE_MEDIUM,
                     remarks=f"Certificate verified with minor data gaps. Missing: {', '.join(missing_important)}",
                     flags=flags,
-                    rule_applied="RULE_8: VERIFIED_WITH_MINOR_GAPS"
+                    rule_applied="RULE_8: VERIFIED_WITH_MINOR_GAPS",
+                    ai_analysis=ai_analysis
                 )
             else:
                 # All fields present and valid
-                return self._create_decision(
+                return self._create_decision_with_ai(
                     decision=self.DECISION_VERIFIED,
                     confidence=self.CONFIDENCE_HIGH,
                     remarks="Certificate verified successfully. All critical data extracted and validated.",
                     flags=flags,
-                    rule_applied="RULE_9: FULLY_VERIFIED"
+                    rule_applied="RULE_9: FULLY_VERIFIED",
+                    ai_analysis=ai_analysis
                 )
         
         # Case 2: OCR PARTIAL + Hash Success = VERIFIED with LOW confidence
@@ -189,6 +225,63 @@ class DecisionEngine:
             flags=flags + ['INCONCLUSIVE'],
             rule_applied="RULE_14: DEFAULT_SUSPICIOUS"
         )
+    
+    def _run_ai_analysis(self, certificate_image_path: str) -> Dict:
+        """
+        Run AI forgery detection on certificate image
+        
+        Args:
+            certificate_image_path: Path to certificate image file
+            
+        Returns:
+            Dictionary containing AI analysis results
+        """
+        if not AI_AVAILABLE:
+            return {
+                'ai_enabled': False,
+                'ai_score': None,
+                'ai_result': None,
+                'error': 'AI module not available'
+            }
+        
+        if not certificate_image_path or not os.path.exists(certificate_image_path):
+            return {
+                'ai_enabled': False,
+                'ai_score': None,
+                'ai_result': None,
+                'error': 'Certificate image path not provided or file not found'
+            }
+        
+        try:
+            # Call AI prediction function
+            ai_result = predict_forgery(certificate_image_path)
+            
+            # Check for errors
+            if 'error' in ai_result:
+                return {
+                    'ai_enabled': False,
+                    'ai_score': None,
+                    'ai_result': None,
+                    'error': ai_result['error']
+                }
+            
+            # Return successful AI analysis
+            return {
+                'ai_enabled': True,
+                'ai_score': ai_result.get('ai_score', 0.0),
+                'ai_result': ai_result.get('ai_result', 'Unknown'),
+                'error': None
+            }
+            
+        except Exception as e:
+            # AI prediction failed, but don't crash - mark as SUSPICIOUS
+            return {
+                'ai_enabled': False,
+                'ai_score': None,
+                'ai_result': 'Suspicious',  # Default to suspicious on error
+                'error': f'AI prediction failed: {str(e)}'
+            }
+    
     
     def _check_critical_fields(self, ocr_result: Dict) -> List[str]:
         """
@@ -275,16 +368,6 @@ class DecisionEngine:
             except (ValueError, TypeError):
                 issues.append('INVALID_YEAR_FORMAT')
         
-        # Validate CGPA
-        cgpa = ocr_result.get('cgpa')
-        if cgpa:
-            try:
-                cgpa_float = float(cgpa)
-                if cgpa_float < 0 or cgpa_float > 10:
-                    issues.append('INVALID_CGPA_RANGE')
-            except (ValueError, TypeError):
-                # CGPA validation failed, but it's optional
-                pass
         
         return issues
     
@@ -318,6 +401,41 @@ class DecisionEngine:
             'flags': flags,
             'rules_applied': self.rules_applied.copy()
         }
+    
+    def _create_decision_with_ai(
+        self,
+        decision: str,
+        confidence: str,
+        remarks: str,
+        flags: List[str],
+        rule_applied: str,
+        ai_analysis: Dict
+    ) -> Dict:
+        """
+        Create a decision result dictionary with AI analysis included
+        
+        Args:
+            decision: VERIFIED or SUSPICIOUS
+            confidence: HIGH, MEDIUM, or LOW
+            remarks: Explanation of the decision
+            flags: List of issue flags
+            rule_applied: Which rule was applied
+            ai_analysis: AI analysis results
+            
+        Returns:
+            Decision result dictionary with AI data
+        """
+        self.rules_applied.append(rule_applied)
+        
+        return {
+            'decision': decision,
+            'confidence': confidence,
+            'remarks': remarks,
+            'flags': flags,
+            'rules_applied': self.rules_applied.copy(),
+            'ai_analysis': ai_analysis
+        }
+    
     
     def get_decision_explanation(self, decision_result: Dict) -> str:
         """
