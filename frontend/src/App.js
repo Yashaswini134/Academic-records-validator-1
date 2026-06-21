@@ -10,6 +10,8 @@ import VerifierUpload from './components/VerifierUpload';
 import VerificationResult from './components/VerificationResult';
 import IssuedCertificates from './components/IssuedCertificates';
 
+import { universityAPI } from './services/api';
+
 function App() {
     const [currentRole, setCurrentRole] = useState(null);
     const [authStep, setAuthStep] = useState(null); // 'signup' or 'signin'
@@ -22,20 +24,32 @@ function App() {
     const [verificationData, setVerificationData] = useState(null);
 
     // Set document title
-    // Auto-login from localStorage
+    // Auto-login from localStorage and verify with backend
     useEffect(() => {
-        const savedUser = localStorage.getItem('currentUser');
-        if (savedUser) {
-            try {
-                const user = JSON.parse(savedUser);
-                setUserData(user);
-                setCurrentRole(user.role);
-                setIsLoggedIn(true);
-                setAuthStep(null);
-            } catch (err) {
-                localStorage.removeItem('currentUser');
+        const verifyAuth = async () => {
+            const savedUser = localStorage.getItem('currentUser');
+            if (savedUser) {
+                try {
+                    const user = JSON.parse(savedUser);
+                    // Verify with backend
+                    const authRes = await universityAPI.checkAuth();
+
+                    if (authRes.success && authRes.data.is_authenticated) {
+                        setUserData(user);
+                        setCurrentRole(user.role);
+                        setIsLoggedIn(true);
+                        setAuthStep(null);
+                    } else {
+                        // Session expired or invalid
+                        localStorage.removeItem('currentUser');
+                    }
+                } catch (err) {
+                    localStorage.removeItem('currentUser');
+                }
             }
-        }
+        };
+
+        verifyAuth();
         document.title = 'Academic Records Validator';
     }, []);
 
@@ -45,8 +59,11 @@ function App() {
     };
 
     const handleSignupSuccess = (data) => {
-        // After successful signup, redirect to signin
-        setAuthStep('signin');
+        // After successful signup, automatic login
+        setUserData(data);
+        setIsLoggedIn(true);
+        setAuthStep(null);
+        // localStorage is already updated in Signup.jsx
     };
 
     const handleSigninSuccess = (data) => {
@@ -65,7 +82,13 @@ function App() {
         setAuthStep('signup');
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        try {
+            await universityAPI.logout();
+        } catch (err) {
+            console.error("Logout error", err);
+        }
+
         setCurrentRole(null);
         setAuthStep(null);
         setIsLoggedIn(false);
@@ -197,7 +220,7 @@ function App() {
 
     return (
         <div className="App">
-            <Navbar role={currentRole} userData={userData} onLogout={null} />
+            <Navbar role={currentRole} userData={userData} onLogout={handleLogout} />
             <main className="main-content">{renderContent()}</main>
             <footer className="footer">
                 <p>© 2026 Academic Records Validator | Powered by AI & Blockchain</p>

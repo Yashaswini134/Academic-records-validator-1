@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import { universityAPI, verifierAPI } from '../services/api';
 
 const Signup = ({ role, onSignupSuccess, onSwitchToSignin, onBack }) => {
     const [formData, setFormData] = useState({
@@ -64,26 +64,32 @@ const Signup = ({ role, onSignupSuccess, onSwitchToSignin, onBack }) => {
 
         try {
             // Real signup - call backend API
-            const response = await axios.post(`http://localhost:5000/${role}/signup`, {
+            const signupApi = role === 'university' ? universityAPI.signup : verifierAPI.signup;
+            const result = await signupApi({
                 email: formData.email,
                 university_name: formData.universityName,
                 password: formData.password,
                 role: role
             });
 
-            if (response.status === 200 || response.status === 201) {
-                // Store user data in localStorage (mock authentication)
+            if (result.success) {
                 const userData = {
-                    email: formData.email,
-                    role: role,
-                    createdAt: new Date().toISOString(),
+                    email: result.data.email,
+                    role: result.data.role,
+                    university_name: result.data.university_name,
+                    token: result.data.token
                 };
 
-                // Success - redirect to signin
+                // Success - save to localStorage for persistence
+                localStorage.setItem('currentUser', JSON.stringify(userData));
+
+                // Automatically log in
                 onSignupSuccess(userData);
+            } else {
+                setErrors({ general: result.error || 'Signup failed. Please try again.' });
             }
         } catch (err) {
-            setErrors({ general: err.response?.data?.message || 'Signup failed. Please try again.' });
+            setErrors({ general: 'Signup failed. Please check your connection.' });
         } finally {
             setLoading(false);
         }

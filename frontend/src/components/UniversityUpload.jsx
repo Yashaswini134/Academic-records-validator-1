@@ -88,7 +88,7 @@ const UniversityUpload = ({ onUploadSuccess, onBack }) => {
                         className="btn-secondary"
                         style={{ padding: '0.5rem 1rem' }}
                     >
-                        📜 View Issued
+                        View Registered Certificates
                     </button>
                 </div>
                 <p className="subtitle">Upload a certificate for OCR extraction and registration</p>

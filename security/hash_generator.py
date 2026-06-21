@@ -146,6 +146,28 @@ class HashGenerator:
         data_str = json.dumps(data, sort_keys=True)
         return HashGenerator.generate_text_hash(data_str)
 
+def normalize_value(value: Any) -> str:
+    """
+    Standardized normalization for all hashing inputs.
+    - Trims whitespace
+    - Converts to lowercase
+    - Removes commas
+    - Replaces multiple spaces with single space
+    - Returns 'null' for empty/None values
+    """
+    if value is None:
+        return "null"
+    
+    val_str = str(value).strip()
+    if not val_str or val_str.lower() in ["null", "none"]:
+        return "null"
+        
+    val_str = val_str.lower()
+    val_str = val_str.replace(',', '')
+    import re
+    val_str = re.sub(r'\s+', ' ', val_str)
+    return val_str
+
 
 def generate_certificate_hash(data: Dict[str, Any]) -> str:
     """
@@ -178,14 +200,15 @@ def generate_certificate_hash(data: Dict[str, Any]) -> str:
     # Map of required fields to possible keys in input data
     # Priority: Exact match -> Alternate keys
     field_mappings = {
-        'certificate_id': ['certificate_id', 'cert_id', 'id'],
+        'certificate_id': ['certificate_id', 'cert_id', 'id', 'certificate_number'],
         'student_name': ['student_name', 'name', 'student'],
-        'university': ['university_name', 'university', 'college'],
+        'university': ['university_name', 'university', 'college', 'institution_name'],
         'roll_number': ['roll_number', 'roll', 'roll_no', 'registration_number', 'reg_no', 'registration', 'seat_no'],
         'year': ['year', 'passing_year', 'year_of_passing'],
-        'course': ['course', 'degree', 'programme'],
-        'cgpa': ['cgpa', 'gpa', 'percentage', 'marks']
+        'course': ['course', 'degree', 'programme', 'course_or_stream'],
+        'cgpa': ['cgpa', 'gpa', 'percentage', 'marks', 'cgpa_or_marks']
     }
+
     
     # Order for concatenation: Certificate ID | Student Name | University Name | Roll / Registration Number | Year of Passing | Course / Degree | CGPA
     # Note: CGPA is added at the end for backward compatibility support if needed
@@ -200,33 +223,13 @@ def generate_certificate_hash(data: Dict[str, Any]) -> str:
         # Find value across possible keys
         for k in possible_keys:
             if k in data:
-                # Check directly if key exists, then check value
                 val = data[k]
                 if val is not None and str(val).strip() != "":
                     value = val
                     break
         
-        # Check if value is found and not empty
-        if value is None:
-            # OPTIONAL FIELDS HANDLE (CGPA is optional for now to avoid breaking existing flows)
-            if key == 'cgpa':
-                normalized_values.append("0.00") # Default for missing CGPA
-                continue
-            raise ValueError(f"Missing required field: {key.replace('_', ' ').title()}")
-            
-        # Normalize
-        # 1. Convert to string
-        val_str = str(value)
-        # 2. Trim leading/trailing spaces
-        val_str = val_str.strip()
-        # 3. Convert to lowercase
-        val_str = val_str.lower()
-        # 4. Remove unnecessary commas
-        val_str = val_str.replace(',', '')
-        # 5. Replace multiple spaces with single space
-        val_str = re.sub(r'\s+', ' ', val_str)
-        
-        normalized_values.append(val_str)
+        # Normalize using shared logic
+        normalized_values.append(normalize_value(value) if key != 'cgpa' or value else "0.00")
         
     # Concatenate with '|'
     final_string = "|".join(normalized_values)
@@ -242,6 +245,55 @@ def generate_certificate_hash(data: Dict[str, Any]) -> str:
     print(f"[HASH DEBUG] Final Hash: {hash_hex}\n")
     
     return hash_hex
+
+def generate_academic_record_hash(academic_data: Dict[str, Any]) -> str:
+    """
+    Generate ONE SINGLE SHA-256 hash from a combined 3-certificate canonical format.
+    Format concatenated in order: TENTH|... \n INTERMEDIATE|... \n DEGREE|...
+    """
+    canonical_lines = []
+    certs_order = [
+        ("TENTH", "tenth_certificate"),
+        ("INTERMEDIATE", "intermediate_certificate"),
+        ("DEGREE", "degree_certificate")
+    ]
+    fields_order = [
+        "certificate_id",
+        "student_name",
+        "roll_number",
+        "year_of_passing",
+        "course_or_degree",
+        "university_or_board_name",
+        "cgpa_or_percentage"
+    ]
+    
+    # Map incoming frontend keys to standard keys for canonical builder
+    field_mappings = {
+        "certificate_id": ["certificate_number", "certificate_id", "cert_id", "id"],
+        "student_name": ["name", "student_name"],
+        "roll_number": ["roll_number", "roll"],
+        "year_of_passing": ["year_of_passing", "year"],
+        "course_or_degree": ["course_or_stream", "course", "degree"],
+        "university_or_board_name": ["institution_name", "university", "university_name", "board"],
+        "cgpa_or_percentage": ["cgpa_or_marks", "cgpa", "marks", "percentage"]
+    }
+    
+    for prefix, cert_key in certs_order:
+        cert_data = academic_data.get(cert_key, {})
+        row = [prefix]
+        for canonical_field in fields_order:
+            val = None
+            for pk in field_mappings[canonical_field]:
+                if cert_data.get(pk) is not None and str(cert_data.get(pk)).strip() != "":
+                    val = cert_data.get(pk)
+                    break
+            row.append(normalize_value(val))
+        canonical_lines.append("|".join(row))
+        
+    combined_string = "\n".join(canonical_lines)
+    print(f"\n[HASH DEBUG] Academic Record String to Hash:\n{combined_string}")
+    return hashlib.sha256(combined_string.encode('utf-8')).hexdigest()
+
 
 if __name__ == "__main__":
     # Test the hash generator

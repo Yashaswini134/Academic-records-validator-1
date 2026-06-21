@@ -963,3 +963,34 @@ body {
 .blockchain-info h4 {
   color: #667eea;
 }
+
+/* Multi-Certificate Layout Styles */
+.multi-review-wrapper {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+.academic-section-card {
+  border: 1.5px solid #e9ecef;
+  border-radius: 10px;
+  padding: 1.5rem;
+  transition: all 0.3s;
+  background: #fdfdfe;
+  margin-bottom: 2rem;
+}
+
+.academic-section-card:hover {
+  border-color: #667eea;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.08);
+}
+
+.section-title {
+  color: #495057;
+  font-size: 1.2rem;
+  margin-bottom: 1.5rem;
+  padding-left: 0.8rem;
+  border-left: 4px solid #667eea;
+  font-weight: 600;
+}

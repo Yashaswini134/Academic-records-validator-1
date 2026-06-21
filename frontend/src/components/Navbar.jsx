@@ -18,6 +18,9 @@ const Navbar = ({ role, userData, onLogout }) => {
                             <span className="navbar-role">
                                 {role === 'university' ? '🏛️ University' : '🔍 Verifier'}
                             </span>
+                            <button onClick={onLogout} className="logout-btn">
+                                🚪 Logout
+                            </button>
                         </>
                     )}
                 </div>

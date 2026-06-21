@@ -38,6 +38,16 @@ class CertificateDatabase:
                 issuer_email TEXT
             )
         ''')
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                email TEXT PRIMARY KEY,
+                password TEXT,
+                role TEXT,
+                university_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         # Check if issuer_email column exists (migration for existing DBs)
         try:
             cursor.execute('ALTER TABLE certificates ADD COLUMN issuer_email TEXT')
@@ -124,6 +134,42 @@ class CertificateDatabase:
     def is_certificate_registered(self, certificate_id):
         cert = self.get_certificate(certificate_id)
         return cert is not None and cert['is_issued']
+
+    # --- User Management ---
+    
+    def add_user(self, email, password, role, university_name=None):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO users (email, password, role, university_name)
+                VALUES (?, ?, ?, ?)
+            ''', (email, password, role, university_name))
+            conn.commit()
+            return True
+        except sqlite3.IntegrityError:
+            return False # User already exists
+        except Exception as e:
+            print(f"Database error in add_user: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_user(self, email):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT email, password, role, university_name FROM users WHERE email = ?', (email,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'email': row[0],
+                'password': row[1],
+                'role': row[2],
+                'university_name': row[3]
+            }
+        return None
 
 # Global instance
 db = CertificateDatabase()

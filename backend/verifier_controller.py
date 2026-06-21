@@ -14,7 +14,7 @@ sys.path.insert(0, BASE_DIR)
 
 # Import existing modules
 from ocr.ocr_engine import CertificateOCREngine
-from security.hash_generator import HashGenerator, generate_certificate_hash
+from security.hash_generator import HashGenerator, generate_certificate_hash, generate_academic_record_hash
 from blockchain.blockchain_service import get_blockchain_service
 from ai.predict_forgery import predict_forgery
 
@@ -117,7 +117,8 @@ class VerifierController:
                     'course': ocr_result.get('course'),
                     'university': ocr_result.get('university'),
                     'year': ocr_result.get('year'),
-                    'cgpa': ocr_result.get('cgpa')
+                    'cgpa': ocr_result.get('cgpa'),
+                    'academic_data': ocr_result.get('academic_data')
                 }
                 
                 if self.verbose:
@@ -125,32 +126,7 @@ class VerifierController:
                     print(f"  ✓ Student Name: {result['ocr_data']['student_name']}")
                     print(f"  ✓ CGPA: {result['ocr_data']['cgpa']}")
 
-            # ========================================
-            # NEW STEP: OWNERSHIP VERIFICATION
-            # ========================================
-            # Require claimant_id for ownership check
-            claimant_id = kwargs.get('claimant_id', '').strip().lower()
-            if claimant_id:
-                if self.verbose:
-                    print(f"\n[OWNERSHIP CHECK] Verifying claimant ID: {claimant_id}")
-                
-                ocr_roll = str(result['ocr_data'].get('roll_number') or '').strip().lower()
-                ocr_cert_id = str(result['ocr_data'].get('certificate_id') or '').strip().lower()
-                
-                if claimant_id != ocr_roll and claimant_id != ocr_cert_id:
-                    if self.verbose:
-                        print(f"  ✗ Ownership Mismatch! (Entered: {claimant_id}, OCR Roll: {ocr_roll}, OCR Cert ID: {ocr_cert_id})")
-                    
-                    result['final_status'] = 'Rejected'
-                    result['remarks'] = "Certificate does not belong to the claimed candidate."
-                    result['errors'].append("Ownership verification failed: Roll Number/Certificate ID mismatch.")
-                    
-                    # Stop process immediately
-                    self._save_results(result, output_dir)
-                    return result
-                
-                if self.verbose:
-                    print("  ✓ Ownership Verified")
+            # Ownership verification step removed as per user request.
             
             # ========================================
             # STEP 3: AI FORGERY DETECTION
@@ -222,7 +198,7 @@ class VerifierController:
                 
                 if status == "Not Registered":
                     result['final_status'] = 'Not Registered'
-                    result['remarks'] = "Certificate Not Registered on Blockchain"
+                    result['remarks'] = "the certificates are not registered"
                     if self.verbose:
                         print(f"  ✗ Status: {status} (Registration check failed)")
                     
@@ -330,7 +306,14 @@ class VerifierController:
             SHA-256 hash string or None
         """
         try:
-            # Generate hash from extracted fields
+            # 1. Check if this is a multi-certificate academic dossier
+            academic_data = ocr_data.get('academic_data')
+            if academic_data:
+                if self.verbose:
+                    print("  ℹ Detected Academic Dossier - generating combined hash...")
+                return generate_academic_record_hash(academic_data)
+                
+            # 2. Fallback to standard single certificate hash
             cert_hash = generate_certificate_hash(ocr_data)
             return cert_hash
             

@@ -15,7 +15,7 @@ const VerificationResult = ({ verificationData, onNewVerification, onBack }) => 
     const finalDecision =
         verificationData.final_decision ||
         verificationData.final_status ||
-        'SUSPICIOUS';
+        (verificationData.is_multi && verificationData.academic_results?.every(r => r.final_status === 'VERIFIED' || r.final_status === 'Genuine') ? 'VERIFIED' : 'SUSPICIOUS');
 
     const badge = getDecisionBadge(finalDecision);
 
@@ -49,63 +49,122 @@ const VerificationResult = ({ verificationData, onNewVerification, onBack }) => 
                 {/* Certificate Details */}
                 <div className="result-section">
                     <h3>📋 Certificate Details</h3>
-                    <div className="details-grid">
-                        <div className="detail-item">
-                            <span className="detail-label">Certificate ID:</span>
-                            <span className="detail-value">
-                                {verificationData.certificate_id ||
-                                    verificationData.ocr_data?.certificate_id ||
-                                    'N/A'}
-                            </span>
+
+                    {verificationData.academic_data || verificationData.ocr_data?.academic_data ? (
+                        <div className="sections-container" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                            {[
+                                { id: '10th', title: '10th Certificate Details', key: 'tenth_certificate' },
+                                { id: 'Inter', title: 'Intermediate Certificate Details', key: 'intermediate_certificate' },
+                                { id: 'Degree', title: 'Degree Certificate Details', key: 'degree_certificate' }
+                            ].map((section) => {
+                                const sectionData = (verificationData.academic_data || verificationData.ocr_data?.academic_data)[section.key];
+                                const resultInfo = verificationData.is_multi ? verificationData.academic_results.find(r => r.level === section.key) : null;
+
+                                if (!sectionData && !resultInfo) return null;
+
+                                return (
+                                    <div key={section.id} className="academic-section-card" style={{ padding: '1.5rem', border: '2px solid #eef0f2', borderRadius: '12px', background: 'white' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.2rem' }}>
+                                            <h4 className="section-title" style={{ margin: 0 }}>{section.title}</h4>
+                                            {resultInfo && (
+                                                <span className={`status-badge ${resultInfo.final_status === 'VERIFIED' || resultInfo.final_status === 'Genuine' ? 'status-success' : 'status-fake'}`} style={{ fontSize: '0.75rem' }}>
+                                                    {resultInfo.final_status}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="details-grid" style={{ fontSize: '0.9rem' }}>
+                                            <div className="detail-item">
+                                                <span className="detail-label">Certificate ID:</span>
+                                                <span className="detail-value">{sectionData?.certificate_number || sectionData?.certificate_id || 'N/A'}</span>
+                                            </div>
+                                            <div className="detail-item">
+                                                <span className="detail-label">Roll Number:</span>
+                                                <span className="detail-value">{sectionData?.roll_number || 'N/A'}</span>
+                                            </div>
+                                            <div className="detail-item">
+                                                <span className="detail-label">University:</span>
+                                                <span className="detail-value">{sectionData?.institution_name || sectionData?.university || 'N/A'}</span>
+                                            </div>
+                                            <div className="detail-item">
+                                                <span className="detail-label">Year:</span>
+                                                <span className="detail-value">{sectionData?.year_of_passing || sectionData?.year || 'N/A'}</span>
+                                            </div>
+                                        </div>
+
+                                        {resultInfo && (
+                                            <div className="blockchain-micro-info" style={{ marginTop: '1rem', padding: '0.8rem', background: '#f8f9fa', borderRadius: '8px', fontSize: '0.85rem' }}>
+                                                <div style={{ display: 'flex', gap: '1rem' }}>
+                                                    <div><strong>Hash Match:</strong> {resultInfo.hash_match ? '✅ Passed' : '❌ Failed'}</div>
+                                                    <div><strong>BC Status:</strong> {resultInfo.blockchain_info?.status || 'Active'}</div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
                         </div>
-                        <div className="detail-item">
-                            <span className="detail-label">Student Name:</span>
-                            <span className="detail-value">
-                                {verificationData.student_name ||
-                                    verificationData.ocr_data?.student_name ||
-                                    'N/A'}
-                            </span>
+                    ) : (
+                        <div className="details-grid">
+                            <div className="detail-item">
+                                <span className="detail-label">Certificate ID:</span>
+                                <span className="detail-value">
+                                    {verificationData.certificate_id ||
+                                        verificationData.ocr_data?.certificate_id ||
+                                        'N/A'}
+                                </span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="detail-label">Student Name:</span>
+                                <span className="detail-value">
+                                    {verificationData.student_name ||
+                                        verificationData.ocr_data?.student_name ||
+                                        'N/A'}
+                                </span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="detail-label">Roll Number:</span>
+                                <span className="detail-value">
+                                    {verificationData.roll_number ||
+                                        verificationData.ocr_data?.roll_number ||
+                                        'N/A'}
+                                </span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="detail-label">Course:</span>
+                                <span className="detail-value">
+                                    {verificationData.course ||
+                                        verificationData.ocr_data?.course ||
+                                        'N/A'}
+                                </span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="detail-label">University:</span>
+                                <span className="detail-value">
+                                    {verificationData.university ||
+                                        verificationData.ocr_data?.university ||
+                                        'N/A'}
+                                </span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="detail-label">Year:</span>
+                                <span className="detail-value">
+                                    {verificationData.year ||
+                                        verificationData.ocr_data?.year ||
+                                        'N/A'}
+                                </span>
+                            </div>
+                            <div className="detail-item">
+                                <span className="detail-label">CGPA:</span>
+                                <span className="detail-value">
+                                    {verificationData.cgpa || 'N/A'}
+                                </span>
+                            </div>
                         </div>
-                        <div className="detail-item">
-                            <span className="detail-label">Roll Number:</span>
-                            <span className="detail-value">
-                                {verificationData.roll_number ||
-                                    verificationData.ocr_data?.roll_number ||
-                                    'N/A'}
-                            </span>
-                        </div>
-                        <div className="detail-item">
-                            <span className="detail-label">Course:</span>
-                            <span className="detail-value">
-                                {verificationData.course ||
-                                    verificationData.ocr_data?.course ||
-                                    'N/A'}
-                            </span>
-                        </div>
-                        <div className="detail-item">
-                            <span className="detail-label">University:</span>
-                            <span className="detail-value">
-                                {verificationData.university ||
-                                    verificationData.ocr_data?.university ||
-                                    'N/A'}
-                            </span>
-                        </div>
-                        <div className="detail-item">
-                            <span className="detail-label">Year:</span>
-                            <span className="detail-value">
-                                {verificationData.year ||
-                                    verificationData.ocr_data?.year ||
-                                    'N/A'}
-                            </span>
-                        </div>
-                        <div className="detail-item">
-                            <span className="detail-label">CGPA:</span>
-                            <span className="detail-value">
-                                {verificationData.cgpa || 'N/A'}
-                            </span>
-                        </div>
-                    </div>
+                    )}
                 </div>
+
 
                 {/* Hash Comparison */}
                 <div className="result-section">

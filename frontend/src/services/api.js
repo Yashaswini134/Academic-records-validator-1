@@ -27,6 +27,39 @@ export const universityAPI = {
         }
     },
 
+    // Signup university
+    signup: async (userData) => {
+        try {
+            const response = await api.post('/university/signup', userData);
+            return { success: true, data: response.data };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.response?.data?.message || 'Signup failed'
+            };
+        }
+    },
+
+    // Logout
+    logout: async () => {
+        try {
+            const response = await api.post('/logout');
+            return { success: true, data: response.data };
+        } catch (error) {
+            return { success: false, error: 'Logout failed' };
+        }
+    },
+
+    // Check Auth Status
+    checkAuth: async () => {
+        try {
+            const response = await api.get('/check-auth');
+            return { success: true, data: response.data };
+        } catch (error) {
+            return { success: false, error: 'Not authenticated' };
+        }
+    },
+
     // Upload certificate for OCR extraction
     uploadCertificate: async (formData) => {
         try {
@@ -82,6 +115,19 @@ export const verifierAPI = {
             return {
                 success: false,
                 error: error.response?.data?.message || 'Login failed'
+            };
+        }
+    },
+
+    // Signup verifier
+    signup: async (userData) => {
+        try {
+            const response = await api.post('/verifier/signup', userData);
+            return { success: true, data: response.data };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.response?.data?.message || 'Signup failed'
             };
         }
     },
@@ -142,6 +188,19 @@ export const verifierAPI = {
             return {
                 success: false,
                 error: error.response?.data?.message || 'Blockchain verification failed'
+            };
+        }
+    },
+    // Complete Verification Flow
+    verifyCertificate: async (filename) => {
+        try {
+            const response = await api.post('/verifier/verify', { filename });
+            return { success: true, data: response.data };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.response?.data?.message || 'Verification failed',
+                data: error.response?.data
             };
         }
     },

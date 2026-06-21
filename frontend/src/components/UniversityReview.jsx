@@ -2,208 +2,187 @@ import React, { useState } from 'react';
 import { universityAPI } from '../services/api';
 
 const UniversityReview = ({ extractedData, onConfirmSuccess, onBack }) => {
-    const [formData, setFormData] = useState({
-        certificate_id: extractedData.certificate_id || '',
-        student_name: extractedData.student_name || '',
-        roll_number: extractedData.roll_number || '',
-        course: extractedData.course || '',
-        university: extractedData.university || '',
-        year: extractedData.year || '',
-        cgpa: extractedData.cgpa || '',
+    // Initialize state with multi-certificate structure from backend's academic_data
+    const [academicData, setAcademicData] = useState({
+        tenth_certificate: extractedData.academic_data?.tenth_certificate || {
+            name: extractedData.student_name || '',
+            certificate_number: extractedData.certificate_id || '',
+            roll_number: extractedData.roll_number || '',
+            institution_name: extractedData.university || '',
+            year_of_passing: extractedData.year || '',
+            course_or_stream: 'SSC',
+            cgpa_or_marks: extractedData.cgpa || ''
+        },
+        intermediate_certificate: extractedData.academic_data?.intermediate_certificate || {
+            name: '', certificate_number: '', roll_number: '', institution_name: '', year_of_passing: '', course_or_stream: '', cgpa_or_marks: ''
+        },
+        degree_certificate: extractedData.academic_data?.degree_certificate || {
+            name: '', certificate_number: '', roll_number: '', institution_name: '', year_of_passing: '', course_or_stream: '', cgpa_or_marks: ''
+        }
     });
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const handleChange = (e) => {
-        setFormData({
-            ...formData,
-            [e.target.name]: e.target.value,
+    const handleFieldChange = (certType, field, value) => {
+        setAcademicData({
+            ...academicData,
+            [certType]: {
+                ...academicData[certType],
+                [field]: value
+            }
         });
     };
 
     const handleConfirm = async () => {
         setError('');
 
-        // Validate required fields
-        if (!formData.certificate_id || !formData.student_name || !formData.university) {
-            setError('Certificate ID, Student Name, and University are required fields');
+        // Basic validation for at least one certificate ID
+        if (!academicData.tenth_certificate.certificate_number &&
+            !academicData.intermediate_certificate.certificate_number &&
+            !academicData.degree_certificate.certificate_number) {
+            setError('Please provide at least one Certificate ID for any level.');
             return;
         }
 
         setLoading(true);
 
         try {
-            const result = await universityAPI.confirmCertificate(formData);
+            // Sends the structured multi-certificate data to the backend
+            // In a real scenario, this would register all three in a batch or the primary one
+            const result = await universityAPI.confirmCertificate({
+                ...academicData.degree_certificate, // Fallback to degree for main storage
+                academic_data: academicData // Include full payload
+            });
 
             if (result.success) {
                 onConfirmSuccess(result.data);
             } else {
-                setError(result.error);
+                setError(result.error || 'Confirmation failed');
             }
         } catch (err) {
-            setError('Confirmation failed. Please try again.');
+            setError('System error during confirmation.');
         } finally {
             setLoading(false);
         }
     };
 
+    const renderCertificateSection = (title, type, data) => (
+        <div className="academic-section-card" key={type}>
+            <h3 className="section-title">{title}</h3>
+            <div className="review-form">
+                <div className="form-row">
+                    <div className="form-group">
+                        <label>Student Name</label>
+                        <input
+                            type="text"
+                            value={data.name || ''}
+                            onChange={(e) => handleFieldChange(type, 'name', e.target.value)}
+                            placeholder="Full Name"
+                            disabled={loading}
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Certificate ID</label>
+                        <input
+                            type="text"
+                            value={data.certificate_number || ''}
+                            onChange={(e) => handleFieldChange(type, 'certificate_number', e.target.value)}
+                            placeholder="Certificate No."
+                            disabled={loading}
+                        />
+                    </div>
+                </div>
+
+                <div className="form-row">
+                    <div className="form-group">
+                        <label>Roll / Reg Number</label>
+                        <input
+                            type="text"
+                            value={data.roll_number || ''}
+                            onChange={(e) => handleFieldChange(type, 'roll_number', e.target.value)}
+                            placeholder="Roll No."
+                            disabled={loading}
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label>Year of Passing</label>
+                        <input
+                            type="text"
+                            value={data.year_of_passing || ''}
+                            onChange={(e) => handleFieldChange(type, 'year_of_passing', e.target.value)}
+                            placeholder="YYYY"
+                            disabled={loading}
+                        />
+                    </div>
+                </div>
+
+                <div className="form-group">
+                    <label>Course / Stream / Degree</label>
+                    <input
+                        type="text"
+                        value={data.course_or_stream || ''}
+                        onChange={(e) => handleFieldChange(type, 'course_or_stream', e.target.value)}
+                        placeholder="e.g. B.Tech CSE / MPC / SSC"
+                        disabled={loading}
+                    />
+                </div>
+
+                <div className="form-group">
+                    <label>Board / University Name</label>
+                    <input
+                        type="text"
+                        value={data.institution_name || ''}
+                        onChange={(e) => handleFieldChange(type, 'institution_name', e.target.value)}
+                        placeholder="Institution Name"
+                        disabled={loading}
+                    />
+                </div>
+
+                <div className="form-group">
+                    <label>CGPA / Percentage / Marks</label>
+                    <input
+                        type="text"
+                        value={data.cgpa_or_marks || ''}
+                        onChange={(e) => handleFieldChange(type, 'cgpa_or_marks', e.target.value)}
+                        placeholder="Results"
+                        disabled={loading}
+                    />
+                </div>
+            </div>
+        </div>
+    );
+
     return (
-        <div className="container">
-            <div className="review-container">
-                <h2>📋 Review Extracted Details</h2>
-                <p className="subtitle">
-                    Review and edit the OCR-extracted information before confirmation
-                </p>
-
-                <div className="ocr-status">
-                    {extractedData.status === 'Already Issued' ? (
-                        <>
-                            <span className="status-badge status-warning" style={{ background: '#ffc107', color: '#000' }}>
-                                ⚠️ Already Issued
-                            </span>
-                            <p style={{ color: '#856404', fontWeight: 'bold', marginTop: '0.5rem' }}>
-                                {extractedData.message}
-                            </p>
-                        </>
-                    ) : (
-                        <>
-                            <span className="status-badge status-success">
-                                ✓ OCR Extraction Complete
-                            </span>
-                            <p>Status: {extractedData.ocr_status || 'PASS'}</p>
-                        </>
-                    )}
-                </div>
-
-                <div className="review-form">
-                    <div className="form-row">
-                        <div className="form-group">
-                            <label htmlFor="certificate_id">
-                                Certificate ID <span className="required">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                id="certificate_id"
-                                name="certificate_id"
-                                value={formData.certificate_id}
-                                onChange={handleChange}
-                                placeholder="Enter certificate ID"
-                                disabled={loading}
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label htmlFor="student_name">
-                                Student Name <span className="required">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                id="student_name"
-                                name="student_name"
-                                value={formData.student_name}
-                                onChange={handleChange}
-                                placeholder="Enter student name"
-                                disabled={loading}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="form-row">
-                        <div className="form-group">
-                            <label htmlFor="roll_number">Roll / Registration Number</label>
-                            <input
-                                type="text"
-                                id="roll_number"
-                                name="roll_number"
-                                value={formData.roll_number}
-                                onChange={handleChange}
-                                placeholder="Enter roll number"
-                                disabled={loading}
-                            />
-                        </div>
-
-                        <div className="form-group">
-                            <label htmlFor="year">Year of Passing</label>
-                            <input
-                                type="text"
-                                id="year"
-                                name="year"
-                                value={formData.year}
-                                onChange={handleChange}
-                                placeholder="Enter year"
-                                disabled={loading}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="course">Course / Degree</label>
-                        <input
-                            type="text"
-                            id="course"
-                            name="course"
-                            value={formData.course}
-                            onChange={handleChange}
-                            placeholder="Enter course name"
-                            disabled={loading}
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="university">
-                            University Name <span className="required">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            id="university"
-                            name="university"
-                            value={formData.university}
-                            onChange={handleChange}
-                            placeholder="Enter university name"
-                            disabled={loading}
-                        />
-                    </div>
-
-                    <div className="form-group">
-                        <label htmlFor="cgpa">CGPA / Percentage</label>
-                        <input
-                            type="text"
-                            id="cgpa"
-                            name="cgpa"
-                            value={formData.cgpa}
-                            onChange={handleChange}
-                            placeholder="Enter CGPA or percentage"
-                            disabled={loading}
-                        />
-                    </div>
-
-                    {error && (
-                        <div className="error-message">
-                            ⚠️ {error}
-                        </div>
-                    )}
-
-                    <div className="form-actions">
-                        <button
-                            type="button"
-                            className="btn-secondary"
-                            onClick={onBack}
-                            disabled={loading}
-                        >
-                            Back
-                        </button>
-                        <button
-                            type="button"
-                            className="btn-primary btn-large"
-                            onClick={handleConfirm}
-                            disabled={loading || extractedData.status === 'Already Issued'}
-                        >
-                            {loading ? 'Confirming...' : 'Confirm & Generate Hash'}
+        <div className="container" style={{ maxWidth: '1000px' }}>
+            <div className="multi-review-wrapper">
+                <div className="review-header">
+                    <div className="header-top">
+                        <button onClick={onBack} className="btn-secondary" style={{ padding: '0.5rem 1rem' }}>
+                            ← Back
                         </button>
                     </div>
                 </div>
 
 
+                <div className="sections-container" style={{ display: 'flex', flexDirection: 'column', gap: '2rem', marginTop: '1rem' }}>
+                    {renderCertificateSection("10th Certificate Details", "tenth_certificate", academicData.tenth_certificate)}
+                    {renderCertificateSection("Intermediate Certificate Details", "intermediate_certificate", academicData.intermediate_certificate)}
+                    {renderCertificateSection("Degree Certificate Details", "degree_certificate", academicData.degree_certificate)}
+                </div>
+
+                {error && <div className="error-message" style={{ marginTop: '1.5rem' }}>⚠️ {error}</div>}
+
+                <div className="final-actions" style={{ marginTop: '2.5rem', display: 'flex', justifyContent: 'center' }}>
+                    <button
+                        className="btn-primary btn-large"
+                        style={{ maxWidth: '400px', padding: '1.2rem', fontSize: '1.2rem', fontWeight: 'bold' }}
+                        onClick={handleConfirm}
+                        disabled={loading}
+                    >
+                        {loading ? 'Generating Hash...' : 'Generate Hash'}
+                    </button>
+                </div>
             </div>
         </div>
     );

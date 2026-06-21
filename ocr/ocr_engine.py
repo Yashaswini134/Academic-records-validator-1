@@ -18,7 +18,7 @@ try:
     import easyocr
     _EASYOCR_AVAILABLE = True
 except Exception as e:
-    print(f"⚠ EasyOCR not available or failed to import: {e}")
+    print(f"Warning: EasyOCR not available or failed to import: {e}")
     easyocr = None
     _EASYOCR_AVAILABLE = False
 
@@ -28,28 +28,43 @@ except Exception as e:
 try:
     from ocr.preprocess_enhanced import EnhancedImagePreprocessor as ImagePreprocessor
 except ImportError as e:
-    print(f"⚠ Warning: Could not import ImagePreprocessor: {e}")
+    print(f"Warning: Warning: Could not import ImagePreprocessor: {e}")
     ImagePreprocessor = None
 
 # 2. Field Extractor
 try:
     from ocr.extract_fields_improved import ImprovedFieldExtractor as FieldExtractor
 except ImportError as e:
-    print(f"⚠ Warning: Could not import FieldExtractor: {e}")
+    print(f"Warning: Warning: Could not import FieldExtractor: {e}")
     FieldExtractor = None
+
+# New Academic Records Extractor
+try:
+    from ocr.academic_field_extractor import AcademicFieldExtractor
+except ImportError:
+    AcademicFieldExtractor = None
+
+# Structured Pipeline for multi-page support
+try:
+    from ocr.smart_extractor import SmartExtractor
+    from ocr.pdf_handler import PDFHandler
+except ImportError:
+    SmartExtractor = None
+    PDFHandler = None
+
 
 # 3. Hash Generator
 try:
     from security.hash_generator import HashGenerator
 except ImportError as e:
-    print(f"⚠ Warning: Could not import HashGenerator: {e}")
+    print(f"Warning: Warning: Could not import HashGenerator: {e}")
     HashGenerator = None
 
 # 4. Layout Engine
 try:
     from ocr.layout_engine import LayoutOCREngine
 except ImportError as e:
-    print(f"⚠ Warning: Could not import LayoutOCREngine: {e}")
+    print(f"Warning: Warning: Could not import LayoutOCREngine: {e}")
     LayoutOCREngine = None
 
 
@@ -64,7 +79,7 @@ class CertificateOCREngine:
             try:
                 self.preprocessor = ImagePreprocessor()
             except Exception as e:
-                print(f"⚠ Preprocessor init failed: {e}")
+                print(f"Warning: Preprocessor init failed: {e}")
                 self.preprocessor = None
         else:
             self.preprocessor = None
@@ -73,10 +88,21 @@ class CertificateOCREngine:
             try:
                 self.extractor = FieldExtractor()
             except Exception as e:
-                print(f"⚠ Extractor init failed: {e}")
+                print(f"Warning: Extractor init failed: {e}")
                 self.extractor = None
         else:
             self.extractor = None
+
+        if AcademicFieldExtractor:
+            self.academic_extractor = AcademicFieldExtractor()
+        else:
+            self.academic_extractor = None
+
+        if SmartExtractor:
+            self.smart_extractor = SmartExtractor()
+        else:
+            self.smart_extractor = None
+
 
         if HashGenerator:
             try:
@@ -102,7 +128,7 @@ class CertificateOCREngine:
             try:
                 # English-only reader, CPU mode for compatibility
                 self.easyocr_reader = easyocr.Reader(['en'], gpu=False)
-                print("✓ EasyOCR reader initialized (en, gpu=False)")
+                print("Success: EasyOCR reader initialized (en, gpu=False)")
             except Exception as e:
                 print(f"⚠ EasyOCR initialization failed, will fall back to Tesseract: {e}")
                 self.easyocr_reader = None
@@ -110,7 +136,7 @@ class CertificateOCREngine:
         # Set Tesseract path if provided, otherwise try to auto-detect on Windows
         if tesseract_path:
             pytesseract.pytesseract.tesseract_cmd = tesseract_path
-            print(f"✓ Tesseract path set to: {tesseract_path}")
+            print(f"Success: Tesseract path set to: {tesseract_path}")
         else:
             if os.name == "nt":
                 # Common Windows installation paths
@@ -121,7 +147,7 @@ class CertificateOCREngine:
                 for p in default_paths:
                     if os.path.exists(p):
                         pytesseract.pytesseract.tesseract_cmd = p
-                        print(f"✓ Auto-detected Tesseract at: {p}")
+                        print(f"Success: Auto-detected Tesseract at: {p}")
                         if not tessdata_prefix:
                             parent_dir = os.path.dirname(p)
                             # Explicitly check for tessdata folder and point to it
@@ -135,7 +161,7 @@ class CertificateOCREngine:
         # Set TESSDATA_PREFIX environment variable if provided or auto-detected
         if tessdata_prefix:
             os.environ['TESSDATA_PREFIX'] = tessdata_prefix
-            print(f"✓ TESSDATA_PREFIX set to: {tessdata_prefix}")
+            print(f"Success: TESSDATA_PREFIX set to: {tessdata_prefix}")
         
         # Try to detect Tesseract
         self._check_tesseract()
@@ -144,7 +170,7 @@ class CertificateOCREngine:
         """Check if Tesseract is available"""
         try:
             version = pytesseract.get_tesseract_version()
-            print(f"✓ Tesseract OCR detected: v{version}")
+            print(f"Success: Tesseract OCR detected: v{version}")
         except Exception as e:
             print("="*60)
             print("WARNING: Tesseract OCR not found!")
@@ -220,7 +246,7 @@ class CertificateOCREngine:
                     best_score = score
                     best_text = text
 
-            print(f"✓ Selected Tesseract result with best score: {best_score}")
+            print(f"Success: Selected Tesseract result with best score: {best_score}")
             return best_text or ""
 
         except Exception as e:
@@ -280,14 +306,37 @@ class CertificateOCREngine:
             else:
                 print("⚠ Hash Generator unavailable.")
 
-            # Step 2 & 3: Multi-pass Preprocessing & OCR ("Tournament Mode")
-            print("\n[STEP 2 & 3] Multi-pass Preprocessing & OCR (Tournament Mode)...")
-            
             ocr_text = ""
             best_score = 0
             best_variant_name = "None"
-            
-            candidates = {}
+
+            # Check if file is PDF for multi-page support
+            if image_path.lower().endswith('.pdf') and PDFHandler:
+                print("\n[MULTI-PAGE PDF MODE DETECTED]")
+                pdf_handler = PDFHandler(output_dir=os.path.join(output_dir, "temp_pages"))
+                pages = pdf_handler.split_and_convert(image_path)
+                
+                if pages and len(pages) > 0:
+                    combined_text = ""
+                    for i, page_path in enumerate(pages):
+                        print(f"\n--- Processing Page {i+1}/{len(pages)} ---")
+                        # Preprocess and OCR each page
+                        p_img = self.preprocessor.preprocess(page_path) if self.preprocessor else None
+                        if p_img is not None:
+                            p_text = self.perform_ocr(p_img)
+                            combined_text += f"\n--- PAGE {i+1} ---\n" + p_text
+                    
+                    if combined_text:
+                        ocr_text = combined_text
+                        best_variant_name = "MultiPage_PDF"
+                        best_score = len(combined_text)
+                    
+            # Fallback to standard Image processing if not a PDF or if PDF splitting failed
+            if not ocr_text:
+                # Step 2 & 3: Multi-pass Preprocessing & OCR ("Tournament Mode")
+                print("\n[Standard Image Mode] Multi-pass Preprocessing & OCR...")
+                
+                candidates = {}
 
             if self.preprocessor:
                 try:
@@ -329,7 +378,7 @@ class CertificateOCREngine:
             else:
                  print("⚠ Preprocessor unavailable.")
 
-            print(f"\n✓ WINNER: {best_variant_name} with {best_score} chars")
+            print(f"\nSuccess: WINNER: {best_variant_name} with {best_score} chars")
 
             # Final check
             if not ocr_text or len(ocr_text.strip()) < 10:
@@ -348,12 +397,27 @@ class CertificateOCREngine:
                 debug_file = os.path.join(output_dir, "debug_ocr_text.txt")
                 with open(debug_file, 'w', encoding='utf-8') as f:
                     f.write(ocr_text)
-                print(f"✓ Debug OCR text saved to: {debug_file}")
+                print(f"Success: Debug OCR text saved to: {debug_file}")
             
             # Step 4: Extract fields
             print("\n[STEP 4/4] Extracting fields (Regex + Layout)...")
             self.extractor.extract_all_fields(ocr_text)
             
+            # --- STRUCTURED SMART EXTRACTION (USER REQUESTED PIPELINE) ---
+            if self.smart_extractor:
+                print("Running Strict Academic Field Extraction (SmartExtractor)...")
+                smart_data = self.smart_extractor.extract(ocr_text)
+                result['structured_data'] = smart_data
+                # If we want to override main fields with smart extraction:
+                # result.update({k: v for k, v in smart_data.items() if v})
+
+            # --- ACADEMIC RECORDS SPECIALIZED EXTRACTION ---
+            if self.academic_extractor:
+                print("Running Specialized Academic Field Extraction...")
+                academic_json = self.academic_extractor.extract(ocr_text)
+                result['academic_data'] = json.loads(academic_json)
+            # -----------------------------------------------
+
             # --- LAYOUT AWARE EXTRACTION (RESTORING & REFINING) ---
             try:
                 print("Performing layout analysis for robust extraction...")
@@ -370,9 +434,7 @@ class CertificateOCREngine:
             
             # Update result with extracted fields
             result.update(extracted_fields)
-            
-            # Update result with extracted fields
-            result.update(extracted_fields)
+
             
             # Get extraction errors
             extraction_errors = self.extractor.get_errors()
@@ -420,7 +482,7 @@ class CertificateOCREngine:
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
         
-        print(f"\n✓ Results saved to: {output_file}")
+        print(f"\nSuccess: Results saved to: {output_file}")
     
     def _print_summary(self, result: Dict):
         """Print processing summary"""
@@ -435,7 +497,7 @@ class CertificateOCREngine:
         fields = ['certificate_id', 'student_name', 'roll_number', 'course', 'university', 'year']
         for field in fields:
             value = result.get(field)
-            status = "✓" if value else "✗"
+            status = "Success:" if value else "✗"
             print(f"  {status} {field.replace('_', ' ').title()}: {value or 'NOT FOUND'}")
         
         print(f"\nFile Hash: {result['hash']}")
